@@ -20,6 +20,9 @@ jobs:
         run: | 
           arduino-cli core update-index
           arduino-cli core install arduino:avr
+      # Install Servo library
+      - name: Install Servo
+        run: arduino-cli lib install "Servo"
       # compile the code 
       - name: compile arduino FlightController
         run: arduino-cli compile -b arduino:avr:uno ./FlightController
