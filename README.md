@@ -1,3 +1,4 @@
+![Compile Arduino Code](https://github.com/Tayfex/ArduinoQuadcopter/workflows/Compile%20Arduino%20Code/badge.svg)
 # Arduino Quadcopter
 
 This project consists of two parts, a flight controller and a remote controller.
