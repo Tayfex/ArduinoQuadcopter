@@ -1,4 +1,4 @@
-name: Compile FlightController
+name: test
 # Trigger workflow on push
 on: [push]
 
