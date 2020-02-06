@@ -1,30 +1,30 @@
-name: test
+name: Compile Arduino Code
 # Trigger workflow on push
 on: [push]
 
 jobs:
   build:
     # Let the thing compile on latest ubuntu
-    name: compile
+    name: Compile
     runs-on: ubuntu-latest
 
     steps:
       # checkout master branch
-      - name: checkout
+      - name: Checkout master branch
         uses: actions/checkout@master
       # Setup arduin cli 
       - name: Setup Arduino CLI 
         uses: arduino/setup-arduino-cli@v1.0.0
       # Install needed platform for arduino uno
-      - name: Install platform
+      - name: Install platform Arduino AVR
         run: | 
           arduino-cli core update-index
           arduino-cli core install arduino:avr
       # Install Servo library
-      - name: Install Servo
+      - name: Install Servo library
         run: arduino-cli lib install "Servo"
       # compile the code 
-      - name: compile arduino FlightController
+      - name: Compile FlightController
         run: arduino-cli compile -b arduino:avr:uno ./FlightController
 
 
