@@ -1,0 +1,27 @@
+name: Compile FlightController
+# Trigger workflow on push
+on: [push]
+
+jobs:
+  build:
+    # Let the thing compile on latest ubuntu
+    name: compile
+    runs-on: ubuntu-latest
+
+    steps:
+      # checkout master branch
+      - name: checkout
+        uses: actions/checkout@master
+      # Setup arduin cli 
+      - name: Setup Arduino CLI 
+        uses: arduino/setup-arduino-cli@v1.0.0
+      # Install needed platform for arduino uno
+      - name: Install platform
+        run: | 
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+      # compile the code 
+      - name: compile arduino FlightController
+        run: arduino-cli --fbqn arduino:avr:uno ./FlightController
+
+
