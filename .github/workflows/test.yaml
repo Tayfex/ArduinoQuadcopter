@@ -22,6 +22,6 @@ jobs:
           arduino-cli core install arduino:avr
       # compile the code 
       - name: compile arduino FlightController
-        run: arduino-cli compile --fbqn arduino:avr:uno ,/FlightController
+        run: arduino-cli compile --fbqn arduino:avr:uno ./FlightController
 
 
