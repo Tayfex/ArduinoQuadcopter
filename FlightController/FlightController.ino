@@ -9,9 +9,9 @@ int THROTTLE_MAXIMUM = 1800;                        // Maximum throttle of a mot
 double throttle = 1000;                             // Desired throttle
 float angle_desired[3] = {0, 0, 0};                 // Desired angle
 
-float gain_p[3] = {1.5, 0, 0};                      // Gain proportional
+float gain_p[3] = {0, 1.5, 0};                      // Gain proportional
 float gain_i[3] = {0, 0, 0};                        // Gain integral
-float gain_d[3] = {0.415, 0, 0};                    // Gain derivetive
+float gain_d[3] = {0, 0.415, 0};                    // Gain derivetive
 
 float filter = 0.98;                                // Complementary filter
 
@@ -21,11 +21,7 @@ int mode = 0;                                       // Mode for testing purpose:
 
 #define PITCH 0                                     // Rotation forward/backward
 #define ROLL 1                                      // Rotation left/right
-#define YAW 2                                       // Rotation left/right
-
-#define X 0
-#define Y 1
-#define Z 2
+#define YAW 2                                       // Rotation around center
 
 #define MPU_ADDRESS 0x68
 
@@ -52,12 +48,17 @@ double time_elapsed;                                // Elapsed time during the l
 
 Servo motor_1;                                      // Motor front right
 Servo motor_2;                                      // Motor front left
-Servo motor_3;                                      // Motor back right
-Servo motor_4;                                      // Motor back left
+Servo motor_3;                                      // Motor back left
+Servo motor_4;                                      // Motor back right
 
 float rad_to_deg = 180/3.141592654;                 // Constant for convert radian to degrees
 
 void setup() {
+  /* Begin serial communication for remote control */
+  Serial.begin(115200);
+  
+  Serial.println("Start");
+
   /* Begin the wire communication with the gyro */
   Wire.begin();
   Wire.beginTransmission(MPU_ADDRESS);
@@ -65,14 +66,15 @@ void setup() {
   Wire.write(0);
   Wire.endTransmission(true);
 
+  Serial.println("Communication with gyro started");
+
   /* Set gyro's digital low pass filter to ~43Hz */
   Wire.beginTransmission(MPU_ADDRESS);
   Wire.write(0x1A);
   Wire.write(0x03);
   Wire.endTransmission();
 
-  /* Begin serial communication for remote control */
-  Serial.begin(115200);
+  Serial.println("Gyro's low pass filter set");
 
   time_current = millis();
 
@@ -82,8 +84,13 @@ void setup() {
   motor_3.attach(10);
   motor_4.attach(11);
 
+  Serial.println("Motors attached");
+
   /* Calibrate the motors */
   calibrateMotors();
+
+  Serial.println("Motors calibrated");
+  Serial.println("----------- Starting -----------");
 }
 
 
@@ -98,15 +105,15 @@ void loop() {
   readAccelerometer();
 
   /* Filter the data to reduce noise */
-  filterData();
+  filterAngle();
 
   /* Recieve the remote controller's commands */
   recieveControl();
 
-  if(throttle > 1010) {
-    /* Calculate PID */
-    calculatePid();
+  /* Calculate PID */
+  calculatePid();
 
+  if(throttle > 1010) {
     /* Apply PID to all motors */
     setMotorPids();
   } else {
@@ -115,7 +122,7 @@ void loop() {
   }
 
   /* Send calculated and measured data to the remote controller */
-  sendData();
+  sendData(ROLL);
 }
 
 
@@ -153,8 +160,8 @@ void calculatePid() {
 void setMotorPids() {
   motor_1.writeMicroseconds(throttle + pid_current[PITCH] + pid_current[ROLL] );      // Set PID for front right motor
   motor_2.writeMicroseconds(throttle + pid_current[PITCH] - pid_current[ROLL] );      // Set PID for front left motor
-  motor_3.writeMicroseconds(throttle - pid_current[PITCH] + pid_current[ROLL] );      // Set PID for back right motor
-  motor_4.writeMicroseconds(throttle - pid_current[PITCH] - pid_current[ROLL] );      // Set PID for back left motor
+  motor_3.writeMicroseconds(throttle - pid_current[PITCH] - pid_current[ROLL] );      // Set PID for back left motor
+  motor_4.writeMicroseconds(throttle - pid_current[PITCH] + pid_current[ROLL] );      // Set PID for back right motor
   
 }
 
@@ -233,10 +240,10 @@ void setSpeedForAllMotors(double speed) {
 /**
  * Low pass filter the gyro's data using a complementary filter 
  */
-void filterData() {
-  angle_current[X] = filter * (angle_current[X] + angle_gyro[X] * time_elapsed) + (1 - filter) * angle_acc[X];
-  angle_current[Y] = filter * (angle_current[Y] + angle_gyro[Y] * time_elapsed) + (1 - filter) * angle_acc[Y];
-  angle_current[Z] = filter * (angle_current[Z] + angle_gyro[Z] * time_elapsed) + (1 - filter) * angle_acc[Z];        // Calculated by chris
+void filterAngle() {
+  angle_current[PITCH] = -(filter * (-angle_current[PITCH] + angle_gyro[PITCH] * time_elapsed) + (1 - filter) * angle_acc[PITCH]);    // Positive angle -> forward
+  angle_current[ROLL] = filter * (angle_current[ROLL] + angle_gyro[ROLL] * time_elapsed) + (1 - filter) * angle_acc[ROLL];            // Positive angle -> right
+  angle_current[YAW] = filter * (angle_current[YAW] + angle_gyro[YAW] * time_elapsed) + (1 - filter) * angle_acc[YAW];                // Calculated by chris
 }
 
 
@@ -251,14 +258,14 @@ void readGyro() {
   Wire.requestFrom(MPU_ADDRESS, 4, true);
 
   /* Save recieved answer */
-  angle_gyro_raw[X] = Wire.read()<<8|Wire.read();
-  angle_gyro_raw[Y] = Wire.read()<<8|Wire.read();
-  angle_gyro_raw[Z] = Wire.read()<<8|Wire.read();         // Added, did not check if that works
+  angle_gyro_raw[PITCH] = Wire.read()<<8|Wire.read();
+  angle_gyro_raw[ROLL] = Wire.read()<<8|Wire.read();
+  angle_gyro_raw[YAW] = Wire.read()<<8|Wire.read();         // Added, did not check if that works
 
   /* Convert the data to degrees */
-  angle_gyro[X] = angle_gyro_raw[X] / 131.0;
-  angle_gyro[Y] = angle_gyro_raw[Y] / 131.0;
-  angle_gyro[Z] = angle_gyro_raw[Z] / 131.0;              // Added, did not check if that works
+  angle_gyro[PITCH] = angle_gyro_raw[PITCH] / 131.0;
+  angle_gyro[ROLL] = angle_gyro_raw[ROLL] / 131.0;
+  angle_gyro[YAW] = angle_gyro_raw[YAW] / 131.0;              // Added, did not check if that works
 
   /* Adjust offsets */
   angle_gyro[0] = angle_gyro[0] + 2.5;
@@ -276,14 +283,14 @@ void readAccelerometer() {
   Wire.requestFrom(MPU_ADDRESS, 6, true);
 
   /* Save recieved answer */
-  angle_acc_raw[X] = Wire.read()<<8|Wire.read();
-  angle_acc_raw[Y] = Wire.read()<<8|Wire.read();
-  angle_acc_raw[Z] = Wire.read()<<8|Wire.read();
+  angle_acc_raw[PITCH] = Wire.read()<<8|Wire.read();
+  angle_acc_raw[ROLL] = Wire.read()<<8|Wire.read();
+  angle_acc_raw[YAW] = Wire.read()<<8|Wire.read();
 
   /* Convert the data to g */
-  angle_acc[X] = atan((angle_acc_raw[Y] / 16384.0) / sqrt(pow((angle_acc_raw[X] / 16384.0), 2) + pow((angle_acc_raw[Z] / 16384.0), 2))) * rad_to_deg;
-  angle_acc[Y] = atan(-1 * (angle_acc_raw[X] / 16384.0) / sqrt(pow((angle_acc_raw[Y] / 16384.0), 2) + pow((angle_acc_raw[Z] / 16384.0), 2))) * rad_to_deg;
-  angle_acc[Z] = angle_acc_raw[Z] / 16384.0;                   // Calculated by my own, don't know if its correct...
+  angle_acc[PITCH] = atan((angle_acc_raw[ROLL] / 16384.0) / sqrt(pow((angle_acc_raw[PITCH] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
+  angle_acc[ROLL] = atan(-1 * (angle_acc_raw[PITCH] / 16384.0) / sqrt(pow((angle_acc_raw[ROLL] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
+  angle_acc[YAW] = angle_acc_raw[YAW] / 16384.0;                   // Calculated by my own, don't know if its correct...
   
 }
 
@@ -291,19 +298,19 @@ void readAccelerometer() {
 /**
  * Sends the controller's settings and measured data to the remote controller
  */
-void sendData() {
+void sendData(int angleType) {
   Serial.println("S" + 
-    String(angle_current[1]) + "|" + 
+    String(angle_current[angleType]) + "|" + 
     String(throttle) + "|" + 
-    String(angle_desired[0]) + "|" + 
-    String(pid_current[0]) + "|" + 
-    String(pid_p[0]) + "|" + 
-    String(pid_d[0]) + "|" + 
-    String(gain_p[0]) + "|" + 
-    String(gain_d[0], 3) + "|" + 
+    String(angle_desired[angleType]) + "|" + 
+    String(pid_current[angleType]) + "|" + 
+    String(pid_p[angleType]) + "|" + 
+    String(pid_d[angleType]) + "|" + 
+    String(gain_p[angleType]) + "|" + 
+    String(gain_d[angleType], 3) + "|" + 
     String(time_elapsed, 6) + "|" + 
     String(filter, 3) + "|" + 
-    String(angle_gyro[0], 6) + "|" + 
-    String(angle_acc[0], 6) + "|" + 
+    String(angle_gyro[angleType], 6) + "|" + 
+    String(angle_acc[angleType], 6) + "|" + 
     String(mode) + "E");
 }
