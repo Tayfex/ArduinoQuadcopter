@@ -248,14 +248,14 @@ void filterAngle() {
 
 
 /**
- * Reads the gyro and saves the values 
+ * Reads the gyro and saves the values
  */
 void readGyro() {
   /* Ask gyro for gyro data */
   Wire.beginTransmission(MPU_ADDRESS);
   Wire.write(0x43);
   Wire.endTransmission(false);
-  Wire.requestFrom(MPU_ADDRESS, 4, true);
+  Wire.requestFrom(MPU_ADDRESS, 6, true);
 
   /* Save recieved answer */
   angle_gyro_raw[PITCH] = Wire.read()<<8|Wire.read();
