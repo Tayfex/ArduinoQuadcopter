@@ -6,14 +6,16 @@
 int THROTTLE_MINIMUM = 1000;                        // Minimum throttle of a motor
 int THROTTLE_MAXIMUM = 1800;                        // Maximum throttle of a motor
 
+float COMPLEMENTARY_ANGLE = 0.98;                   // Complementary filter for combining acc and gyro
+
 double throttle = 1000;                             // Desired throttle
 float angle_desired[3] = {0, 0, 0};                 // Desired angle
 
-float gain_p[3] = {0, 1.5, 0};                      // Gain proportional
+float gain_p[3] = {1.5, 1.5, 0};                    // Gain proportional
 float gain_i[3] = {0, 0, 0};                        // Gain integral
-float gain_d[3] = {0, 0.415, 0};                    // Gain derivetive
+float gain_d[3] = {0.4, 0.4, 0};                // Gain derivetive
 
-float filter = 0.98;                                // Complementary filter
+float filter = 0.9;                                // Complementary filter for pid
 
 int mode = 0;                                       // Mode for testing purpose: 0 = all motors | 1 = motor 1 & 3 | 2 = motor 2 & 4
 
@@ -143,8 +145,13 @@ void calculatePid() {
   pid_p[ROLL] = gain_p[ROLL] * error_current[ROLL];
 
   /* Calculated weighted derivitive error */
-  pid_d[PITCH] = gain_d[PITCH] * (error_current[PITCH] - error_prev[PITCH]) / time_elapsed;
-  pid_d[ROLL] = gain_d[ROLL] * (error_current[ROLL] - error_prev[ROLL]) / time_elapsed;
+  float pid_d_new[3];
+
+  pid_d_new[PITCH] = gain_d[PITCH] * (error_current[PITCH] - error_prev[PITCH]) / time_elapsed;
+  pid_d_new[ROLL] = gain_d[ROLL] * (error_current[ROLL] - error_prev[ROLL]) / time_elapsed;
+
+  pid_d[PITCH] = filter * pid_d[PITCH] + (1 - filter) * pid_d_new[PITCH];
+  pid_d[ROLL] = filter * pid_d[ROLL] + (1 - filter) * pid_d_new[ROLL];
 
   /* Calculate weighted sum of the PID */
   pid_current[PITCH] = pid_p[PITCH] + pid_i[PITCH] + pid_d[PITCH];
@@ -162,6 +169,91 @@ void setMotorPids() {
   motor_2.writeMicroseconds(throttle + pid_current[PITCH] - pid_current[ROLL] );      // Set PID for front left motor
   motor_3.writeMicroseconds(throttle - pid_current[PITCH] - pid_current[ROLL] );      // Set PID for back left motor
   motor_4.writeMicroseconds(throttle - pid_current[PITCH] + pid_current[ROLL] );      // Set PID for back right motor
+  
+}
+
+
+/**
+ * Calibrates all 4 motors
+ */
+void calibrateMotors() {
+  setSpeedForAllMotors(THROTTLE_MINIMUM);
+  delay(7000);
+}
+
+
+/**
+ * Sets the given speed for all motors
+ */
+void setSpeedForAllMotors(double speed) {
+  motor_1.writeMicroseconds(speed);
+  motor_2.writeMicroseconds(speed);
+  motor_3.writeMicroseconds(speed);
+  motor_4.writeMicroseconds(speed);
+}
+
+/**
+ * Low pass filter the gyro's data using a complementary filter 
+ */
+void filterAngle() {
+  float angle_new[3];
+
+  angle_new[PITCH] = -(COMPLEMENTARY_ANGLE * (-angle_current[PITCH] + angle_gyro[PITCH] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[PITCH]);    // Positive angle -> forward
+  angle_new[ROLL] = COMPLEMENTARY_ANGLE * (angle_current[ROLL] + angle_gyro[ROLL] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[ROLL];            // Positive angle -> right
+  angle_new[YAW] = COMPLEMENTARY_ANGLE * (angle_current[YAW] + angle_gyro[YAW] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[YAW];                // Calculated by chris
+
+  float value = 0.5;
+
+  angle_current[PITCH] = value * angle_current[PITCH] + (1 - value) * angle_new[PITCH];
+  angle_current[ROLL] = value * angle_current[ROLL] + (1 - value) * angle_new[ROLL];
+  angle_current[YAW] = value * angle_current[YAW] + (1 - value) * angle_new[YAW];
+}
+
+
+/**
+ * Reads the gyro and saves the values
+ */
+void readGyro() {
+  /* Ask gyro for gyro data */
+  Wire.beginTransmission(MPU_ADDRESS);
+  Wire.write(0x43);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDRESS, 6, true);
+
+  /* Save recieved answer */
+  angle_gyro_raw[PITCH] = Wire.read()<<8|Wire.read();
+  angle_gyro_raw[ROLL] = Wire.read()<<8|Wire.read();
+  angle_gyro_raw[YAW] = Wire.read()<<8|Wire.read();         // Added, did not check if that works
+
+  /* Convert the data to degrees */
+  angle_gyro[PITCH] = angle_gyro_raw[PITCH] / 131.0;
+  angle_gyro[ROLL] = angle_gyro_raw[ROLL] / 131.0;
+  angle_gyro[YAW] = angle_gyro_raw[YAW] / 131.0;              // Added, did not check if that works
+
+  /* Adjust offsets */
+  angle_gyro[0] = angle_gyro[0] + 2.5;
+}
+
+
+/**
+ *  Reads the accelerometer and saves the values
+ */
+void readAccelerometer() {
+  /* Ask gyro for acceleration data */
+  Wire.beginTransmission(MPU_ADDRESS);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDRESS, 6, true);
+
+  /* Save recieved answer */
+  angle_acc_raw[PITCH] = Wire.read()<<8|Wire.read();
+  angle_acc_raw[ROLL] = Wire.read()<<8|Wire.read();
+  angle_acc_raw[YAW] = Wire.read()<<8|Wire.read();
+
+  /* Convert the data to g */
+  angle_acc[PITCH] = atan((angle_acc_raw[ROLL] / 16384.0) / sqrt(pow((angle_acc_raw[PITCH] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
+  angle_acc[ROLL] = atan(-1 * (angle_acc_raw[PITCH] / 16384.0) / sqrt(pow((angle_acc_raw[ROLL] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
+  angle_acc[YAW] = angle_acc_raw[YAW] / 16384.0;                   // Calculated by my own, don't know if its correct...
   
 }
 
@@ -215,83 +307,6 @@ void recieveControl() {
       mode = 2;                                                   // Activate motor 2 & 4
     }
   }
-}
-
-
-/**
- * Calibrates all 4 motors
- */
-void calibrateMotors() {
-  setSpeedForAllMotors(THROTTLE_MINIMUM);
-  delay(7000);
-}
-
-
-/**
- * Sets the given speed for all motors
- */
-void setSpeedForAllMotors(double speed) {
-  motor_1.writeMicroseconds(speed);
-  motor_2.writeMicroseconds(speed);
-  motor_3.writeMicroseconds(speed);
-  motor_4.writeMicroseconds(speed);
-}
-
-/**
- * Low pass filter the gyro's data using a complementary filter 
- */
-void filterAngle() {
-  angle_current[PITCH] = -(filter * (-angle_current[PITCH] + angle_gyro[PITCH] * time_elapsed) + (1 - filter) * angle_acc[PITCH]);    // Positive angle -> forward
-  angle_current[ROLL] = filter * (angle_current[ROLL] + angle_gyro[ROLL] * time_elapsed) + (1 - filter) * angle_acc[ROLL];            // Positive angle -> right
-  angle_current[YAW] = filter * (angle_current[YAW] + angle_gyro[YAW] * time_elapsed) + (1 - filter) * angle_acc[YAW];                // Calculated by chris
-}
-
-
-/**
- * Reads the gyro and saves the values
- */
-void readGyro() {
-  /* Ask gyro for gyro data */
-  Wire.beginTransmission(MPU_ADDRESS);
-  Wire.write(0x43);
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU_ADDRESS, 6, true);
-
-  /* Save recieved answer */
-  angle_gyro_raw[PITCH] = Wire.read()<<8|Wire.read();
-  angle_gyro_raw[ROLL] = Wire.read()<<8|Wire.read();
-  angle_gyro_raw[YAW] = Wire.read()<<8|Wire.read();         // Added, did not check if that works
-
-  /* Convert the data to degrees */
-  angle_gyro[PITCH] = angle_gyro_raw[PITCH] / 131.0;
-  angle_gyro[ROLL] = angle_gyro_raw[ROLL] / 131.0;
-  angle_gyro[YAW] = angle_gyro_raw[YAW] / 131.0;              // Added, did not check if that works
-
-  /* Adjust offsets */
-  angle_gyro[0] = angle_gyro[0] + 2.5;
-}
-
-
-/**
- *  Reads the accelerometer and saves the values
- */
-void readAccelerometer() {
-  /* Ask gyro for acceleration data */
-  Wire.beginTransmission(MPU_ADDRESS);
-  Wire.write(0x3B);
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU_ADDRESS, 6, true);
-
-  /* Save recieved answer */
-  angle_acc_raw[PITCH] = Wire.read()<<8|Wire.read();
-  angle_acc_raw[ROLL] = Wire.read()<<8|Wire.read();
-  angle_acc_raw[YAW] = Wire.read()<<8|Wire.read();
-
-  /* Convert the data to g */
-  angle_acc[PITCH] = atan((angle_acc_raw[ROLL] / 16384.0) / sqrt(pow((angle_acc_raw[PITCH] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
-  angle_acc[ROLL] = atan(-1 * (angle_acc_raw[PITCH] / 16384.0) / sqrt(pow((angle_acc_raw[ROLL] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
-  angle_acc[YAW] = angle_acc_raw[YAW] / 16384.0;                   // Calculated by my own, don't know if its correct...
-  
 }
 
 
