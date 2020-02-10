@@ -39,7 +39,7 @@ void setup() {
   text("Loading...", 560, 315);
 
   printArray(Serial.list());
-  port = new Serial(this, "COM3", 115200);
+  port = new Serial(this, "COM6", 115200);
   port.bufferUntil('\n');
 
   println("Starting controller");
