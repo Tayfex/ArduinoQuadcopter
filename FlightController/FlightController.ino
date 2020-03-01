@@ -260,51 +260,65 @@ void readAccelerometer() {
 
 /**
  * Recieve remote control's command
+ * 
+ * There are two kind of commands: increase/decrease some value or it's direct value.
+ * Direct value commands start with a '.'
+ * Each command is determinated with ';'
  */
 void recieveControl() {
   if(Serial.available()) {
-    int command = Serial.read();
+    String command = Serial.readStringUntil(';');
 
-    if(command == 'u') {
-      throttle += 50;                                             // Increase throttle
+    if(command[0] == '.') {
+      // Recieve direct value command
 
-      if(throttle >= THROTTLE_MAXIMUM) {
-        throttle = THROTTLE_MAXIMUM;
+      if(command[1] == 't') {
+        throttle = command.substring(2).toInt();                    // Set throttle to value
       }
-    } else if(command == 'd') {
-      throttle -= 50;                                             // Decrease throttle
+    } else {
+      // Recieve increase/decrease command
 
-      if(throttle <= THROTTLE_MINIMUM) {
-        throttle = THROTTLE_MINIMUM;
+      if(command == "throttle+") {
+        throttle += 50;                                             // Increase throttle
+
+        if(throttle >= THROTTLE_MAXIMUM) {
+          throttle = THROTTLE_MAXIMUM;
+        }
+      } else if(command == "throttle-") {
+        throttle -= 50;                                             // Decrease throttle
+
+        if(throttle <= THROTTLE_MINIMUM) {
+          throttle = THROTTLE_MINIMUM;
+        }
+      } else if(command == "stop") {
+        throttle = THROTTLE_MINIMUM;                                // Turn off all motors
+      } else if(command == "gainP+") {
+        gain_p[PITCH] = gain_p[PITCH] + 0.1;                        // Increase P gain for pitch
+        gain_p[ROLL] = gain_p[ROLL] + 0.1;                          // Increase P gain for roll
+      } else if(command == "gainP-") {
+        gain_p[PITCH] = gain_p[PITCH] - 0.1;                        // Decrease P gain for pitch
+        gain_p[ROLL] = gain_p[ROLL] - 0.1;                          // Decrease P gain for roll
+      } else if(command == "gainD+") {
+        gain_d[PITCH] = gain_d[PITCH] + 0.05;                       // Increase D gain for pitch
+        gain_d[ROLL] = gain_d[ROLL] + 0.05;                         // Increase D gain for roll
+      } else if(command == "gainD-") {
+        gain_d[PITCH] = gain_d[PITCH] - 0.05;                       // Decrease D gain for pitch
+        gain_d[ROLL] = gain_d[ROLL] - 0.05;                         // Decrease D gain for roll
+      } else if(command == "right") {
+        angle_desired[ROLL] = angle_desired[ROLL] + 2;              // Move right
+      } else if(command == "left") {
+        angle_desired[ROLL] = angle_desired[ROLL] - 2;              // Move left
+      } else if(command == "filter+") {
+        filter = filter + 0.005;                                    // Increase complementary filter
+      } else if(command == "filter-") {
+        filter = filter - 0.005;                                    // Decrease complementary filter
+      } else if(command == "mode0") {
+        mode = 0;                                                   // Activate all motors
+      } else if(command == "mode1") {
+        mode = 1;                                                   // Activate motor 1 & 3
+      } else if(command == "mode2") {
+        mode = 2;                                                   // Activate motor 2 & 4
       }
-    } else if(command == 'b') {
-      throttle = THROTTLE_MINIMUM;                                // Turn off all motors
-    } else if(command == 'q') {
-      gain_p[PITCH] = gain_p[PITCH] + 0.1;                        // Increase P gain for pitch
-      gain_p[ROLL] = gain_p[ROLL] + 0.1;                          // Increase P gain for roll
-    } else if(command == 'a') {
-      gain_p[PITCH] = gain_p[PITCH] - 0.1;                        // Decrease P gain for pitch
-      gain_p[ROLL] = gain_p[ROLL] - 0.1;                          // Decrease P gain for roll
-    } else if(command == 'w') {
-      gain_d[PITCH] = gain_d[PITCH] + 0.05;                       // Increase D gain for pitch
-      gain_d[ROLL] = gain_d[ROLL] + 0.05;                         // Increase D gain for roll
-    } else if(command == 's') {
-      gain_d[PITCH] = gain_d[PITCH] - 0.05;                       // Decrease D gain for pitch
-      gain_d[ROLL] = gain_d[ROLL] - 0.05;                         // Decrease D gain for roll
-    } else if(command == 'r') {
-      angle_desired[ROLL] = angle_desired[ROLL] + 2;              // Move right
-    } else if(command == 'l') {
-      angle_desired[ROLL] = angle_desired[ROLL] - 2;              // Move left
-    } else if(command == 't') {
-      filter = filter + 0.005;                                    // Increase complementary filter
-    } else if(command == 'g') {
-      filter = filter - 0.005;                                    // Decrease complementary filter
-    } else if(command == '0') {
-      mode = 0;                                                   // Activate all motors
-    } else if(command == '1') {
-      mode = 1;                                                   // Activate motor 1 & 3
-    } else if(command == '2') {
-      mode = 2;                                                   // Activate motor 2 & 4
     }
   }
 }

@@ -1,3 +1,7 @@
+import net.java.games.input.*;
+import org.gamecontrolplus.*;
+import org.gamecontrolplus.gui.*;
+
 import processing.serial.*;
 
 Serial port;
@@ -5,6 +9,9 @@ Serial port;
 String portStream;
 float throttle = 0;
 PFont f;
+
+ControlDevice controller;
+ControlIO control;
 
 //Settings
 
@@ -21,37 +28,51 @@ FloatList graph2;
 FloatList graph3;
 
 void setup() {
-  size(1120, 750);
-  
+  // Initialize lists
   graph1 = new FloatList();
   graph2 = new FloatList();
   graph3 = new FloatList();
 
+  // Prepare window
+  size(1120, 750);
   drawBackground();
-
   fill(0, 0, 0);
 
+  // Load font
   f = createFont("Arial", 50, true); 
   textFont(f, 50);
   textAlign(CENTER);
 
+  // Display loading screen
   useColor(1);
   text("Loading...", 560, 315);
-
+  
+  // Start communication with Arduino
   printArray(Serial.list());
-  port = new Serial(this, "COM6", 115200);
+  port = new Serial(this, "COM3", 115200);
   port.bufferUntil('\n');
+  
+  // Start communication with gamepad
+  control = ControlIO.getInstance(this);
+  controller = control.filter(GCP.GAMEPAD).getMatchedDevice("xboxController");
+  
+  // Check if gamepad has been found
+  if(controller == null) {
+    println("Gamepad not found");
+    System.exit(-1);
+  }
 
   println("Starting controller");
 }
 
 void draw() {
+  // Redraw display whenever recieving new data
   if (portStream != null && portStream.charAt(0) == 'S' && portStream.charAt(portStream.length() - 3) == 'E') {
 
+    // Save recieved data
     String[] data = split(portStream.substring(1, portStream.length() - 3), '|');
 
-    //println("Message: " + portStream);
-
+    // Unpack data
     float angle = float(data[0]);
     float throttle = float(data[1]);
     float angle_desired = float(data[2]);
@@ -65,11 +86,23 @@ void draw() {
     float gyro = float(data[10]);
     float acc = float(data[11]);
     
-    println(portStream);
-
-    drawBackground();
+    // Read gamepad
+    int throttleGamepad = (int) map(controller.getSlider("throttle").getValue(), 0, -1, 1000, 1300);
     
-    //Draw display
+    if(throttleGamepad < 1000) {
+      throttleGamepad = 1000;
+    }
+    
+    // Send gamepad throttle
+    port.write(".t");
+    port.write(str(throttleGamepad));
+    println(throttleGamepad);
+    port.write(";");
+    
+    //println(portStream);
+    
+    // --- Draw display ---
+    drawBackground();
     translate(0, -150);
     
     displayRotation(200, 330, 1, angle, angle_desired);
@@ -316,46 +349,46 @@ void rectRotated(int posX, int posY, int sizeX, int sizeY, float angle) {
 void keyPressed() {
   if (keyCode == UP) {
     println("Increasing throttle");
-    port.write('u');
+    port.write("throttle+;");
   } else if (keyCode == DOWN) {
     println("Descresing throttle");
-    port.write('d');
+    port.write("throttle-;");
   } else if (keyCode == LEFT) {
     println("Turning left");
-    port.write('l');
+    port.write("left;");
   } else if (keyCode == RIGHT) {
     println("Turning right");
-    port.write('r');
+    port.write("right;");
   } else if (key == 'q') {
     println("Incresing p");
-    port.write('q');
+    port.write("gainP+;");
   } else if (key == 'a') {
     println("Decreasing p");
-    port.write('a');
+    port.write("gainP-;");
   } else if (key == 'w') {
     println("Increasing d");
-    port.write('w');
+    port.write("gainD+;");
   } else if (key == 's') {
     println("Decreasing d");
-    port.write('s');
+    port.write("gainD-;");
   } else if (key == 'e') {
     println("Increasing filter");
-    port.write('t');
+    port.write("filter+;");
   } else if (key == 'd') {
     println("Decreasing filter");
-    port.write('g');
+    port.write("filter-;");
   } else if (key == '1') {
     println("Mode 1");
-    port.write('0');
+    port.write("mode0;");
   } else if (key == '2') {
     println("Mode 2");
-    port.write('1');
+    port.write("mode1;");
   } else if (key == '3') {
     println("Mode 3");
-    port.write('2');
+    port.write("mode2;");
   } else {
-    println("BREAK");
-    port.write('b');
+    println("STOP");
+    port.write("stop;");
   }
 }
 
