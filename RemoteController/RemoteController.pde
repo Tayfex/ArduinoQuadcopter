@@ -4,28 +4,44 @@ import org.gamecontrolplus.gui.*;
 
 import processing.serial.*;
 
-Serial port;
+// --- SETTINGS ---
 
-String portStream;
-float throttle = 0;
-PFont f;
+int WINDOW_SIZE_X = 1120;               // Window width
+int WINDOW_SIZE_Y = 500;                // Window height
 
-ControlDevice controller;
+int RECT_BAR_SIZE_X = 100;              // Rect bar width
+int RECT_BAR_SIZE_Y = 300;              // Rect bar height
+
+// --- VARIABLES ---
+
+float angle = 0;                        // Current angle
+float throttle = 0;                     // Current throttle
+float angle_desired = 0;                // Desired angle
+float pid_total = 0;                    // Total PID value
+float pid_p = 0;                        // PID P value
+float pid_d = 0;                        // PID D value
+float gain_p = 0;                       // PID P gain
+float gain_d = 0;                       // PID D gain
+float time_elapsed = 0;                 // Elapsed time
+float filter = 0;                       // Filter strength
+float gyro = 0;                         // Gyro value
+float acc = 0;                          // Accelerometer value
+
+int throttleGamepad = 0;
+
+FloatList graph1;                       // Gyro history
+FloatList graph2;                       // Acc history
+FloatList graph3;                       // Angle history
+
+Serial port;                            // Port for serial communication
+String portStream;                      // Port input stream
+
+PFont f;                                // GUI font
+
+boolean setupFinished = false;          // True as soon as loading has finished
+
+ControlDevice controller;               // Gamepad controller
 ControlIO control;
-
-//Settings
-
-int WINDOW_SIZE_X = 1120;
-int WINDOW_SIZE_Y = 500;
-
-//RectBarSize:
-
-int RECT_BAR_SIZE_X = 100;
-int RECT_BAR_SIZE_Y = 300;
-
-FloatList graph1;
-FloatList graph2;
-FloatList graph3;
 
 void setup() {
   // Initialize lists
@@ -33,24 +49,25 @@ void setup() {
   graph2 = new FloatList();
   graph3 = new FloatList();
 
-  // Prepare window
-  size(1120, 750);
-  drawBackground();
-  fill(0, 0, 0);
-
   // Load font
   f = createFont("Arial", 50, true); 
   textFont(f, 50);
   textAlign(CENTER);
 
+  // Prepare window
+  size(1120, 750);
+  fill(0, 0, 0);
+  drawDisplay();
+
   // Display loading screen
-  useColor(1);
-  text("Loading...", 560, 315);
+  /*useColor(1);
+  text("Loading...", 560, 315);*/
+  drawInfoBox("Loading");
   
   // Start communication with Arduino
   printArray(Serial.list());
-  port = new Serial(this, "COM3", 115200);
-  port.bufferUntil('\n');
+  port = new Serial(this, "COM3", 57600);
+  //port.bufferUntil('\n');
   
   // Start communication with gamepad
   control = ControlIO.getInstance(this);
@@ -61,74 +78,99 @@ void setup() {
     println("Gamepad not found");
     System.exit(-1);
   }
-
-  println("Starting controller");
 }
 
 void draw() {
   // Redraw display whenever recieving new data
-  if (portStream != null && portStream.charAt(0) == 'S' && portStream.charAt(portStream.length() - 3) == 'E') {
-
-    // Save recieved data
-    String[] data = split(portStream.substring(1, portStream.length() - 3), '|');
-
-    // Unpack data
-    float angle = float(data[0]);
-    float throttle = float(data[1]);
-    float angle_desired = float(data[2]);
-    float pid_total = float(data[3]);
-    float pid_p = float(data[4]);
-    float pid_d = float(data[5]);
-    float gain_p = float(data[6]);
-    float gain_d = float(data[7]);
-    float time_elapsed = float(data[8]);
-    float filter = float(data[9]);
-    float gyro = float(data[10]);
-    float acc = float(data[11]);
+  if(port.available() > 0) {
     
-    // Read gamepad
-    int throttleGamepad = (int) map(controller.getSlider("throttle").getValue(), 0, -1, 1000, 1300);
-    
+    // Save stream
+    portStream = port.readStringUntil('\n');
+
+    if(setupFinished && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
+      
+      // Save recieved data
+      String[] data = split(portStream.substring(1, portStream.length() - 3), '|');
+      
+      if(data.length == 13) {
+       
+        // Unpack data
+        angle = float(data[0]);
+        throttle = float(data[1]);
+        angle_desired = float(data[2]);
+        pid_total = float(data[3]);
+        pid_p = float(data[4]);
+        pid_d = float(data[5]);
+        gain_p = float(data[6]);
+        gain_d = float(data[7]);
+        time_elapsed = float(data[8]);
+        filter = float(data[9]);
+        gyro = float(data[10]);
+        acc = float(data[11]);
+        
+        println(portStream);
+        
+        sendGamepadInput();
+        
+        drawDisplay();
+      } else {
+        
+        // Print bad data error
+        println("ERROR | Invalid " + str(data.length) + " data: " + portStream);
+      }
+    } else if(portStream != null) {
+      if(portStream.substring(0, 5).equals("SETUP")) {
+       drawInfoBox(portStream.substring(7)); 
+       
+       if(portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
+         setupFinished = true;
+       }
+      } else {
+        println("ERROR | Invalid data: " + portStream);
+      }
+    }
+  }
+}
+
+void sendGamepadInput() {
+  // Read gamepad
+  int throttleGamepadNew = (int) map(controller.getSlider("throttle").getValue(), 0, -1, 1000, 1300);
+  
+  if(throttleGamepadNew != throttleGamepad) {
+    throttleGamepad = throttleGamepadNew;
+  
     if(throttleGamepad < 1000) {
       throttleGamepad = 1000;
     }
     
     // Send gamepad throttle
-    port.write(".t");
-    port.write(str(throttleGamepad));
-    println(throttleGamepad);
-    port.write(";");
-    
-    //println(portStream);
-    
-    // --- Draw display ---
-    drawBackground();
-    translate(0, -150);
-    
-    displayRotation(200, 330, 1, angle, angle_desired);
-    displayCircle(920, 330, "Speed", 1, int(throttle), 1000, 1800);
-    
-    displayCircle(390, 500, "Prop.", 0.5, gain_p, 0, 5.0);
-    displayCircle(560, 500, "Integral", 0.5, 0, 0, 5.0);
-    displayCircle(730, 500, "Derivitive", 0.5, gain_d, 0, 5.0);
-    
-    displayBar(430, 200, "Error", 1, pid_total, 0, 150);
-    displayBar(560, 200, "P Error", 1, pid_p, 0, 150);
-    displayBar(690, 200, "D Error", 1, pid_d, 0, 150);
-    
-    displayCircle(250, 550, "Calculations", 0.4, 1 / time_elapsed, 0, 3000);
-    displayCircle(870, 550, "Filter", 0.4, filter, 0.5, 1);
-    
-    translate(0, 150);
-    
-    //Draw graph
-    displayGraph(gyro, acc, angle);
-    
-  } else if (portStream != null) {
-    println("Undefined data: '" + portStream + "'");
-  } else {
-    //println("No data available");
+    port.write(".t" + str(throttleGamepad) + ";");
   }
+}
+
+void drawDisplay() {
+  // --- Draw display ---
+  drawBackground();
+  translate(0, -150);
+  
+  displayRotation(200, 330, 1, angle, angle_desired);
+  displayCircle(920, 330, "Speed", 1, int(throttle), 1000, 1800);
+  
+  displayCircle(390, 500, "Prop.", 0.5, gain_p, 0, 5.0);
+  displayCircle(560, 500, "Integral", 0.5, 0, 0, 5.0);
+  displayCircle(730, 500, "Derivitive", 0.5, gain_d, 0, 5.0);
+  
+  displayBar(430, 200, "Error", 1, pid_total, 0, 150);
+  displayBar(560, 200, "P Error", 1, pid_p, 0, 150);
+  displayBar(690, 200, "D Error", 1, pid_d, 0, 150);
+  
+  displayCircle(250, 550, "Calculations", 0.4, 1 / time_elapsed, 0, 3000);
+  displayCircle(870, 550, "Filter", 0.4, filter, 0.5, 1);
+  
+  translate(0, 150);
+  
+  //Draw graph
+  displayGraph(gyro, acc, angle);
 }
 
 void displayGraph(float graph1New, float graph2New, float graph3New) {  
@@ -346,6 +388,34 @@ void rectRotated(int posX, int posY, int sizeX, int sizeY, float angle) {
   popMatrix();
 }
 
+void drawInfoBox(String text) {
+  translate(0, 100);
+  
+  float width = WINDOW_SIZE_X * 0.6;
+  float height = WINDOW_SIZE_Y * 0.6;
+  
+  useColor(1);
+  rect(WINDOW_SIZE_X / 2 - width / 2, WINDOW_SIZE_Y / 2 - height / 2, width, height, 7);
+  
+  width -= 10;
+  height -= 10;
+  
+  useColor(0);
+  rect(WINDOW_SIZE_X / 2 - width / 2, WINDOW_SIZE_Y / 2 - height / 2, width, height, 7);
+  
+  width -= 10;
+  height -= 10;
+  
+  useColor(1);
+  rect(WINDOW_SIZE_X / 2 - width / 2, WINDOW_SIZE_Y / 2 - height / 2, width, height, 7);
+  
+  useColor(0);
+  textSize(50);
+  text(text, WINDOW_SIZE_X / 2, WINDOW_SIZE_Y / 2);
+  
+  translate(0, -100);
+}
+
 void keyPressed() {
   if (keyCode == UP) {
     println("Increasing throttle");
@@ -429,8 +499,4 @@ void useColor(int index) {
     stroke(89, 118, 148);
     fill(89, 118, 148);
   }
-}
-
-void serialEvent(Serial myPort) {
-  portStream = myPort.readString();
 }

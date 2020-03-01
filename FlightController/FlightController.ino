@@ -57,9 +57,9 @@ float rad_to_deg = 180/3.141592654;                 // Constant for convert radi
 
 void setup() {
   /* Begin serial communication for remote control */
-  Serial.begin(115200);
+  Serial.begin(57600);
   
-  Serial.println("Start");
+  Serial.println("SETUP: Start");
 
   /* Begin the wire communication with the gyro */
   Wire.begin();
@@ -68,7 +68,7 @@ void setup() {
   Wire.write(0);
   Wire.endTransmission(true);
 
-  Serial.println("Communication with gyro started");
+  Serial.println("SETUP: Communication with gyro started");
 
   /* Set gyro's digital low pass filter to ~43Hz */
   Wire.beginTransmission(MPU_ADDRESS);
@@ -76,7 +76,7 @@ void setup() {
   Wire.write(0x03);
   Wire.endTransmission();
 
-  Serial.println("Gyro's low pass filter set");
+  Serial.println("SETUP: Gyro's low pass filter set");
 
   time_current = millis();
 
@@ -86,13 +86,13 @@ void setup() {
   motor_3.attach(9);
   motor_4.attach(8);
 
-  Serial.println("Motors attached");
+  Serial.println("SETUP: Motors attached");
 
   /* Calibrate the motors */
   calibrateMotors();
 
-  Serial.println("Motors calibrated");
-  Serial.println("----------- Starting -----------");
+  Serial.println("SETUP: Motors calibrated");
+  Serial.println("SETUP: Finished");
 }
 
 
@@ -328,7 +328,7 @@ void recieveControl() {
  * Sends the controller's settings and measured data to the remote controller
  */
 void sendData(int angleType) {
-  Serial.println("S" + 
+  Serial.println("B" + 
     String(angle_current[angleType]) + "|" + 
     String(throttle) + "|" + 
     String(angle_desired[angleType]) + "|" + 
