@@ -56,8 +56,9 @@ Servo motor_4;                                      // Motor back right
 float rad_to_deg = 180/3.141592654;                 // Constant for convert radian to degrees
 
 void setup() {
+
   /* Begin serial communication for remote control */
-  Serial.begin(57600);
+  Serial.begin(115200);
   
   Serial.println("SETUP: Start");
 
@@ -87,6 +88,8 @@ void setup() {
   motor_4.attach(8);
 
   Serial.println("SETUP: Motors attached");
+
+  Serial.println("SETUP: Calibrating motors");
 
   /* Calibrate the motors */
   calibrateMotors();

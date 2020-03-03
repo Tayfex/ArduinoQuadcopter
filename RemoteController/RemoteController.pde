@@ -61,72 +61,116 @@ void setup() {
 
   // Display loading screen
   /*useColor(1);
-  text("Loading...", 560, 315);*/
+   text("Loading...", 560, 315);*/
   drawInfoBox("Loading");
-  
+
   // Start communication with Arduino
   printArray(Serial.list());
-  port = new Serial(this, "COM3", 57600);
-  //port.bufferUntil('\n');
-  
+  port = new Serial(this, "COM3", 115200);
+
   // Start communication with gamepad
   control = ControlIO.getInstance(this);
   controller = control.filter(GCP.GAMEPAD).getMatchedDevice("xboxController");
-  
+
   // Check if gamepad has been found
-  if(controller == null) {
+  if (controller == null) {
     println("Gamepad not found");
     System.exit(-1);
   }
 }
 
 void draw() {
+  
   // Redraw display whenever recieving new data
-  if(port.available() > 0) {
-    
-    // Save stream
+  if (port.available() > 0) {
+
+    // Read port stream
     portStream = port.readStringUntil('\n');
 
-    if(setupFinished && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
-      
-      // Save recieved data
-      String[] data = split(portStream.substring(1, portStream.length() - 3), '|');
-      
-      if(data.length == 13) {
-       
-        // Unpack data
-        angle = float(data[0]);
-        throttle = float(data[1]);
-        angle_desired = float(data[2]);
-        pid_total = float(data[3]);
-        pid_p = float(data[4]);
-        pid_d = float(data[5]);
-        gain_p = float(data[6]);
-        gain_d = float(data[7]);
-        time_elapsed = float(data[8]);
-        filter = float(data[9]);
-        gyro = float(data[10]);
-        acc = float(data[11]);
-        
-        println(portStream);
-        
-        sendGamepadInput();
-        
-        drawDisplay();
-      } else {
-        
-        // Print bad data error
-        println("ERROR | Invalid " + str(data.length) + " data: " + portStream);
+    // ----- Drone in FLY MODE -----
+    if (setupFinished && portStream != null) {
+
+      // Send gamepad data
+      sendGamepadInput();
+
+      // Read again if recieve data are invalid because this might be due to the cleaning of the buffer
+      if (!(portStream.length() > 3 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E')) {
+        portStream = port.readStringUntil('\n');
       }
-    } else if(portStream != null) {
-      if(portStream.substring(0, 5).equals("SETUP")) {
-       drawInfoBox(portStream.substring(7)); 
-       
-       if(portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
-         setupFinished = true;
-       }
+
+      // Check if recieved data matches protocol
+      if (portStream.length() > 3 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
+
+        // Save recieved data
+        String[] data = split(portStream.substring(1, portStream.length() - 3), '|');
+
+        // Check if recieved data are complete
+        if (data.length > 12) {
+
+          // Unpack data
+          angle = float(data[0]);
+          throttle = float(data[1]);
+          angle_desired = float(data[2]);
+          pid_total = float(data[3]);
+          pid_p = float(data[4]);
+          pid_d = float(data[5]);
+          gain_p = float(data[6]);
+          gain_d = float(data[7]);
+          time_elapsed = float(data[8]);
+          filter = float(data[9]);
+          gyro = float(data[10]);
+          acc = float(data[11]);
+
+          println(portStream);
+
+          // Redraw display
+          drawDisplay();
+        } else {
+
+          // Print error
+          println("ERROR during runtime | Data incomplete: " + portStream);
+        }
       } else {
-        println("ERROR | Invalid data: " + portStream);
+
+        // Print error
+        println("ERROR during runtime | Invalid data: " + portStream);
+      }
+
+      // Clear buffer after reading to avoid delay due to buffer overflow
+      if (port.available() > 500) {
+
+        // Clear the buffer except the last 300 bytes
+        port.readBytes(port.available() - 300);
+      }
+    } else if (portStream != null) {
+      // ----- Drone in SETUP MODE -----
+
+      // Read port's full stream!
+      // Because the draw() loop is way slower then the arduino sending data the whole buffer has to be made empty within one draw() loop
+      // Otherwise the buffer is overflowing over time which is causing a huge delay! 
+      // At the same time it has to be made sure that none of the messages is accidentially skipped during SETUP MODE (reliable communication)
+      // In FLY MODE this isn't necessary anymore (unreliable communication)
+      while (portStream != null) {
+
+        // Check if data is setup message
+        if (portStream.length() > 5 && portStream.indexOf("SETUP") != -1) {
+
+          // Print message on display
+          drawInfoBox(portStream.substring(portStream.indexOf("SETUP") + 7));
+
+          // Check if setup is finished
+          if (portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
+            setupFinished = true;
+          }
+        } else {
+
+          // Print error
+          println("ERROR during setup | Invalid  data: " + portStream);
+        }
+
+        // Read the next complete message to make sure that the buffer is emtpy except the last bytes
+        // which might be the first bytes of the next not yet full recieved message
+        portStream = port.readStringUntil('\n');
       }
     }
   }
@@ -135,14 +179,14 @@ void draw() {
 void sendGamepadInput() {
   // Read gamepad
   int throttleGamepadNew = (int) map(controller.getSlider("throttle").getValue(), 0, -1, 1000, 1300);
-  
-  if(throttleGamepadNew != throttleGamepad) {
+
+  if (throttleGamepadNew != throttleGamepad) {
     throttleGamepad = throttleGamepadNew;
-  
-    if(throttleGamepad < 1000) {
+
+    if (throttleGamepad < 1000) {
       throttleGamepad = 1000;
     }
-    
+
     // Send gamepad throttle
     port.write(".t" + str(throttleGamepad) + ";");
   }
@@ -152,95 +196,95 @@ void drawDisplay() {
   // --- Draw display ---
   drawBackground();
   translate(0, -150);
-  
+
   displayRotation(200, 330, 1, angle, angle_desired);
   displayCircle(920, 330, "Speed", 1, int(throttle), 1000, 1800);
-  
+
   displayCircle(390, 500, "Prop.", 0.5, gain_p, 0, 5.0);
   displayCircle(560, 500, "Integral", 0.5, 0, 0, 5.0);
   displayCircle(730, 500, "Derivitive", 0.5, gain_d, 0, 5.0);
-  
+
   displayBar(430, 200, "Error", 1, pid_total, 0, 150);
   displayBar(560, 200, "P Error", 1, pid_p, 0, 150);
   displayBar(690, 200, "D Error", 1, pid_d, 0, 150);
-  
+
   displayCircle(250, 550, "Calculations", 0.4, 1 / time_elapsed, 0, 3000);
   displayCircle(870, 550, "Filter", 0.4, filter, 0.5, 1);
-  
+
   translate(0, 150);
-  
+
   //Draw graph
   displayGraph(gyro, acc, angle);
 }
 
 void displayGraph(float graph1New, float graph2New, float graph3New) {  
   translate(100, 600);
-  
+
   // Draw grid
   useColor(3);
   strokeWeight(1);
-  
-  for(int i = -90; i <= 90; i += 10) {
+
+  for (int i = -90; i <= 90; i += 10) {
     line(0, i, 920, i);
   }
-  
-  for(int i = 0; i <= 920; i += 20) {
+
+  for (int i = 0; i <= 920; i += 20) {
     line(i, 90, i, -90);
   }
-  
+
   stroke(0, 0, 0);
   line(0, 0, 920, 0);
-  
+
   int stepSize = 2;
-  
-  
+
+
   // Graph 1
-  if(graph1.size() > 460) {
+  if (graph1.size() > 460) {
     graph1.remove(0);
   }
-  
+
   graph1.append(graph1New);
-  
+
   strokeWeight(2);
-  
+
   // Draw line
   stroke(255, 0, 0);
-  for(int i = 0; i < graph1.size() - 1; i++) {
+  for (int i = 0; i < graph1.size() - 1; i++) {
     line(i * stepSize, graph1.get(i), (i + 1) * stepSize, graph1.get(i + 1));
   }
-  
-  
+
+
   // Graph 2
-  if(graph2.size() > 460) {
+  if (graph2.size() > 460) {
     graph2.remove(0);
   }
-  
+
   graph2.append(graph2New);
-  
+
   strokeWeight(2);
-  
+
   // Draw line
   useColor(1);
-  for(int i = 0; i < graph2.size() - 1; i++) {
+  for (int i = 0; i < graph2.size() - 1; i++) {
     line(i * stepSize, graph2.get(i), (i + 1) * stepSize, graph2.get(i + 1));
   }
-  
-  
+
+
   // Graph 3
-  if(graph3.size() > 460) {
+  if (graph3.size() > 460) {
     graph3.remove(0);
   }
-  
+
   graph3.append(graph3New);
-  
+
   strokeWeight(2);
-  
+
   // Draw line
   useColor(2);
-  for(int i = 0; i < graph3.size() - 1; i++) {
+  for (int i = 0; i < graph3.size() - 1; i++) {
     line(i * stepSize, graph3.get(i), (i + 1) * stepSize, graph3.get(i + 1));
   }
-  
+
   translate(-100, -600);
 }
 
@@ -248,10 +292,10 @@ void displayGraph(float graph1New, float graph2New, float graph3New) {
 void displayRotation(int posX, int posY, float scale, float value, float desiredValue) {
   // Display: Angle
   pushMatrix();
-  
+
   translate(posX, posY);
   scale(scale);
-  
+
   useColor(3);
   ellipse(0, 0, 300, 300);
 
@@ -260,7 +304,7 @@ void displayRotation(int posX, int posY, float scale, float value, float desired
 
   useColor(3);
   rectRotatedMirrored(0, 0, 250, 10, desiredValue);
-  
+
   useColor(1);
   rectRotatedMirrored(0, 0, 250, 10, value);
 
@@ -270,17 +314,17 @@ void displayRotation(int posX, int posY, float scale, float value, float desired
   useColor(1);
   textFont(f, 30);
   text("Rotation", 0, 140);
-  
+
   popMatrix();
 }
 
 void displayMotorSpeeds(int posX, int posY, float scale, float value1, float value2) {
   // Display: Angle
   pushMatrix();
-  
+
   translate(posX, posY);
   scale(scale);
-  
+
   useColor(3);
   ellipse(0, 0, 300, 300);
 
@@ -289,7 +333,7 @@ void displayMotorSpeeds(int posX, int posY, float scale, float value1, float val
 
   useColor(1);
   rectRotated(0, 0, 125, 10, value1);
-  
+
   useColor(1);
   rectRotated(0, 0, 125, 10, value2);
 
@@ -299,46 +343,46 @@ void displayMotorSpeeds(int posX, int posY, float scale, float value1, float val
   useColor(1);
   textFont(f, 30);
   text("Rotation", 0, 140);
-  
+
   popMatrix();
 }
 
 void displayBar(int posX, int posY, String text, float scale, float value, float min, float max) {
   pushMatrix();
-  
+
   value = abs(value);
-  
+
   translate(posX - 40, posY);
   scale(scale);
-  
+
   useColor(3);
   rect(0, 0, 80, 150);
-  
+
   useColor(2);
   rect(0, 150, 80, - (value - min) / (max - min) * 150);
-  
+
   useColor(0);
   textFont(f, 30);
   text(int(value), 40, 100);
-  
+
   useColor(2);
   textAlign(CENTER);
   textFont(f, 20);
   text(text, 40, 180);
-  
+
   popMatrix();
 }
 
 void displayCircle(int posX, int posY, String text, float scale, float value, float min, float max) {
   // Display: Angle
   pushMatrix();
-  
+
   translate(posX, posY);
   scale(scale);
-  
+
   useColor(3);
   ellipse(0, 0, 300, 300);
-  
+
   useColor(1);
   rectRotated(0, 0, 150, 10, 120 + ((value - min) / (max - min)) * 300);
 
@@ -353,10 +397,10 @@ void displayCircle(int posX, int posY, String text, float scale, float value, fl
 
   useColor(1);
   textFont(f, 30);
-  
+
   text(value, 0, 70);
   text(text, 0, 140);
-  
+
   popMatrix();
 }
 
@@ -390,29 +434,29 @@ void rectRotated(int posX, int posY, int sizeX, int sizeY, float angle) {
 
 void drawInfoBox(String text) {
   translate(0, 100);
-  
-  float width = WINDOW_SIZE_X * 0.6;
-  float height = WINDOW_SIZE_Y * 0.6;
-  
+
+  float width = WINDOW_SIZE_X * 0.5;
+  float height = WINDOW_SIZE_Y * 0.4;
+
   useColor(1);
   rect(WINDOW_SIZE_X / 2 - width / 2, WINDOW_SIZE_Y / 2 - height / 2, width, height, 7);
-  
+
   width -= 10;
   height -= 10;
-  
+
   useColor(0);
   rect(WINDOW_SIZE_X / 2 - width / 2, WINDOW_SIZE_Y / 2 - height / 2, width, height, 7);
-  
+
   width -= 10;
   height -= 10;
-  
+
   useColor(1);
   rect(WINDOW_SIZE_X / 2 - width / 2, WINDOW_SIZE_Y / 2 - height / 2, width, height, 7);
-  
+
   useColor(0);
   textSize(50);
   text(text, WINDOW_SIZE_X / 2, WINDOW_SIZE_Y / 2);
-  
+
   translate(0, -100);
 }
 
