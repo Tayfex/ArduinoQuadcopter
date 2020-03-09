@@ -435,7 +435,7 @@ void rectRotated(int posX, int posY, int sizeX, int sizeY, float angle) {
 void drawInfoBox(String text) {
   translate(0, 100);
 
-  float width = WINDOW_SIZE_X * 0.5;
+  float width = WINDOW_SIZE_X * 0.7;
   float height = WINDOW_SIZE_Y * 0.4;
 
   useColor(1);
@@ -455,7 +455,7 @@ void drawInfoBox(String text) {
 
   useColor(0);
   textSize(50);
-  text(text, WINDOW_SIZE_X / 2, WINDOW_SIZE_Y / 2);
+  text(text, WINDOW_SIZE_X / 2, WINDOW_SIZE_Y / 2 + 10);
 
   translate(0, -100);
 }
@@ -500,6 +500,9 @@ void keyPressed() {
   } else if (key == '3') {
     println("Mode 3");
     port.write("mode2;");
+  } else if(keyCode == ENTER) {
+    println("Starting Drone setup");
+    port.write("startSetup;");
   } else {
     println("STOP");
     port.write("stop;");
