@@ -14,18 +14,24 @@ int RECT_BAR_SIZE_Y = 300;              // Rect bar height
 
 // --- VARIABLES ---
 
-float angle = 0;                        // Current angle
-float throttle = 0;                     // Current throttle
-float angle_desired = 0;                // Desired angle
-float pid_total = 0;                    // Total PID value
+float displayVersion = 2;               // 1D or 2D display
+float throttle = 1000;                  // Current throttle
+float angle_current_roll = 0;           // Current roll angle
+float angle_current_pitch = 0;          // Current pitch angle
+float angle_desired_roll = 0;           // Desired roll angle
+float angle_desired_pitch = 0;          // Desired pitch angle
+float pid_current_roll = 0;             // Total PID value for roll
+float pid_current_pitch = 0;            // Total PID value for pitch
 float pid_p = 0;                        // PID P value
 float pid_d = 0;                        // PID D value
 float gain_p = 0;                       // PID P gain
 float gain_d = 0;                       // PID D gain
 float time_elapsed = 0;                 // Elapsed time
 float filter = 0;                       // Filter strength
-float gyro = 0;                         // Gyro value
-float acc = 0;                          // Accelerometer value
+float angle_gyro_roll = 0;              // Gyro value for roll
+float angle_gyro_pitch = 0;             // Gyro value for pitch
+float angle_acc_roll = 0;               // Accelerometer value for roll
+float angle_acc_pitch = 0;              // Accelerometer value for pitch
 
 int throttleGamepad = 0;
 
@@ -67,15 +73,21 @@ void setup() {
   // Start communication with Arduino
   printArray(Serial.list());
   port = new Serial(this, "COM3", 115200);
+  println("Looking for gamepad");
 
   // Start communication with gamepad
   control = ControlIO.getInstance(this);
+  println("Looking for gamepad");
   controller = control.filter(GCP.GAMEPAD).getMatchedDevice("xboxController");
+
+  
 
   // Check if gamepad has been found
   if (controller == null) {
     println("Gamepad not found");
     System.exit(-1);
+  } else {
+    println("Gamepad found");
   }
 }
 
@@ -97,31 +109,56 @@ void draw() {
       if (!(portStream.length() > 3 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E')) {
         portStream = port.readStringUntil('\n');
       }
+      
+      println(portStream);
 
       // Check if recieved data matches protocol
       if (portStream.length() > 3 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
 
         // Save recieved data
-        String[] data = split(portStream.substring(1, portStream.length() - 3), '|');
+        String[] data = split(portStream.substring(2, portStream.length() - 3), '|');
 
         // Check if recieved data are complete
         if (data.length > 12) {
 
           // Unpack data
-          angle = float(data[0]);
-          throttle = float(data[1]);
-          angle_desired = float(data[2]);
-          pid_total = float(data[3]);
-          pid_p = float(data[4]);
-          pid_d = float(data[5]);
-          gain_p = float(data[6]);
-          gain_d = float(data[7]);
-          time_elapsed = float(data[8]);
-          filter = float(data[9]);
-          gyro = float(data[10]);
-          acc = float(data[11]);
-
-          println(portStream);
+          if(portStream.charAt(1) == '1') {
+            displayVersion = 1;
+          } else if(portStream.charAt(1) == '2') {
+            displayVersion = 2; 
+          }
+          
+          if(displayVersion == 1) {
+            
+            throttle = float(data[0]);
+            angle_current_pitch = float(data[1]);
+            angle_desired_pitch = float(data[2]);
+            pid_current_pitch = float(data[3]);
+            pid_p = float(data[4]);
+            pid_d = float(data[5]);
+            gain_p = float(data[6]);
+            gain_d = float(data[7]);
+            time_elapsed = float(data[8]);
+            filter = float(data[9]);
+            angle_gyro_pitch = float(data[10]);
+            angle_acc_pitch = float(data[11]);
+            
+          } else if(displayVersion == 2) {
+            
+            throttle = float(data[0]);
+            angle_current_pitch = float(data[1]);
+            angle_current_roll = float(data[2]);
+            angle_desired_pitch = float(data[3]);
+            angle_desired_roll = float(data[4]);
+            pid_current_pitch = float(data[5]);
+            pid_current_roll = float(data[6]);
+            gain_p = float(data[7]);
+            gain_d = float(data[8]);
+            angle_gyro_pitch = float(data[9]);
+            angle_gyro_roll = float(data[10]);
+            angle_acc_pitch = float(data[11]);
+            angle_acc_roll = float(data[12]);
+          }
 
           // Redraw display
           drawDisplay();
@@ -178,7 +215,7 @@ void draw() {
 
 void sendGamepadInput() {
   // Read gamepad
-  int throttleGamepadNew = (int) map(controller.getSlider("throttle").getValue(), 0, -1, 1000, 1300);
+  int throttleGamepadNew = 1000 + (int) map(controller.getSlider("throttle1").getValue(), 0, -1, 0, 300) + (int) map(controller.getSlider("throttle2").getValue(), 0, -1, 0, 300);
 
   if (throttleGamepadNew != throttleGamepad) {
     throttleGamepad = throttleGamepadNew;
@@ -193,18 +230,26 @@ void sendGamepadInput() {
 }
 
 void drawDisplay() {
+  if(displayVersion == 1) {
+    drawDisplay1();
+  } else {
+    drawDisplay2();
+  }
+}
+
+void drawDisplay1() {
   // --- Draw display ---
   drawBackground();
   translate(0, -150);
 
-  displayRotation(200, 330, 1, angle, angle_desired);
+  displayRotation(200, 330, 1, angle_current_pitch, angle_desired_pitch);
   displayCircle(920, 330, "Speed", 1, int(throttle), 1000, 1800);
 
   displayCircle(390, 500, "Prop.", 0.5, gain_p, 0, 5.0);
   displayCircle(560, 500, "Integral", 0.5, 0, 0, 5.0);
   displayCircle(730, 500, "Derivitive", 0.5, gain_d, 0, 5.0);
 
-  displayBar(430, 200, "Error", 1, pid_total, 0, 150);
+  displayBar(430, 200, "Error", 1, pid_current_pitch, 0, 150);
   displayBar(560, 200, "P Error", 1, pid_p, 0, 150);
   displayBar(690, 200, "D Error", 1, pid_d, 0, 150);
 
@@ -214,11 +259,53 @@ void drawDisplay() {
   translate(0, 150);
 
   //Draw graph
-  displayGraph(gyro, acc, angle);
+  displayGraph(angle_gyro_pitch, angle_acc_pitch, angle_current_pitch);
+}
+
+void drawDisplay2() {
+  // --- Draw display ---
+  drawBackground();
+  translate(0, -150);
+  
+  displayDrone(780, 420);
+
+  displayCircle(280, 340, "Speed", 1, int(throttle), 1000, 1800);
+
+  displayCircle(160, 580, "Prop.", 0.35, gain_p, 0, 5.0);
+  displayCircle(280, 580, "Integral", 0.35, 0, 0, 5.0);
+  displayCircle(400, 580, "Derivitive", 0.35, gain_d, 0, 5.0);
+
+  translate(0, 150);
+
+  //Draw graph
+  displayGraph(angle_gyro_pitch, angle_acc_pitch, angle_current_pitch);
+}
+
+void displayDrone(int posX, int posY) {
+  translate(posX, posY);
+  
+  displayCircledBar(170, -170, "", 0.8, throttle + pid_current_pitch + pid_current_roll, 1000, 2000);
+  displayCircledBar(-170, -170, "", 0.8, throttle + pid_current_pitch - pid_current_roll, 1000, 2000);
+  displayCircledBar(-170, 170, "", 0.8, throttle - pid_current_pitch - pid_current_roll, 1000, 2000);
+  displayCircledBar(170, 170, "", 0.8, throttle - pid_current_pitch + pid_current_roll, 1000, 2000);
+  
+  useColor(1);
+  rectMode(CENTER);
+  rect(0, 0, 60, 60);
+  rotate(radians(45));
+  rect(0, 0, 340, 1);
+  rotate(radians(-90));
+  rect(0, 0, 340, 1);
+  rotate(radians(45));
+  rectMode(CORNER);
+  
+  displayBalance(0, 0, angle_current_roll, angle_current_pitch, angle_desired_roll, angle_desired_pitch);
+  
+  translate(-posX, -posY);
 }
 
 void displayGraph(float graph1New, float graph2New, float graph3New) {  
-  translate(100, 600);
+  translate(100, 625);
 
   // Draw grid
   useColor(3);
@@ -286,6 +373,29 @@ void displayGraph(float graph1New, float graph2New, float graph3New) {
   }
 
   translate(-100, -600);
+}
+
+void displayBalance(int posX, int posY, float x, float y, float x2, float y2) {
+  pushMatrix();
+  translate(posX, posY);
+  
+  // Draw desired balance point
+  x2 = map(x2, -90, 90, -190, 190);
+  y2 = map(y2, -90, 90, -190, 190);
+  
+  useColor(3);
+  ellipseMode(CENTER);
+  ellipse(x2, -y2, 10, 10);
+  
+  // Draw current balance point
+  x = map(x, -90, 90, -190, 190);
+  y = map(y, -90, 90, -190, 190);
+  
+  useColor(2);
+  ellipseMode(CENTER);
+  ellipse(x, -y, 10, 10);
+  
+  popMatrix();
 }
 
 // Display for the rotation
@@ -369,6 +479,44 @@ void displayBar(int posX, int posY, String text, float scale, float value, float
   textAlign(CENTER);
   textFont(f, 20);
   text(text, 40, 180);
+
+  popMatrix();
+}
+
+void displayCircledBar(int posX, int posY, String text, float scale, float value, float min, float max) {
+  pushMatrix();
+
+  value = abs(value);
+
+  translate(posX - 75 * scale, posY - 75 * scale);
+  scale(scale);
+
+  useColor(0);
+  rect(0, 0, 150, 150);
+
+  useColor(2);
+  rect(0, 150, 150, - (value - min) / (max - min) * 150);
+
+  useColor(1);
+  textFont(f, 30);
+  text(int(value), 75, 100);
+
+  useColor(1);
+  textAlign(CENTER);
+  textFont(f, 20);
+  text(text, 75, 180);
+  
+  useColor(0);
+  noFill();
+  strokeWeight(50);
+  ellipseMode(CORNER);
+  ellipse(-20, -20, 190, 190);
+  
+  useColor(1);
+  noFill();
+  strokeWeight(11);
+  ellipseMode(CORNER);
+  ellipse(-3, -3, 156, 156);
 
   popMatrix();
 }
