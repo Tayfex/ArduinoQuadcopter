@@ -28,6 +28,5 @@ The quadcopter consists of the following parts:
 The following pictures shows the wiring of the components.
 > **Note:** The battery shown, is not the one used on the drone
 
-![fritzing_sketch](https://github.com/Tayfex/ArduinoQuadcopter/drone_sketch.pdf)
-![Picture](drone_sketch.pdf)
+![Picture](drone_sketch.png)
 
