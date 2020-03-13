@@ -20,4 +20,14 @@ The quadcopter consists of the following parts:
 
 - **Arduino Uno** as flight controller
 - **MPU6050** as gyro
+- **HC-05** as bluetooth dongle for the drone
 - **DJI F450** for the frame
+
+## Wiring
+
+The following pictures shows the wiring of the components.
+> **Note:** The battery shown, is not the one used on the drone
+
+![fritzing_sketch](https://github.com/Tayfex/ArduinoQuadcopter/drone_sketch.pdf)
+
+
