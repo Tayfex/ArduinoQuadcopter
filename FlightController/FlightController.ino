@@ -298,12 +298,12 @@ void calibrateAngleOffsets() {
   }
 
   // divide sums by number of measurements to get average
-  gyro_avg[PITCH] = gyro_avg[PITCH] / num;
-  gyro_avg[ROLL] = gyro_avg[ROLL] / num;
-  gyro_avg[YAW] = gyro_avg[YAW] / num;
-  acc_avg[PITCH] = acc_avg[PITCH] / num;
-  acc_avg[ROLL] = acc_avg[ROLL] / num;
-  acc_avg[YAW] = acc_avg[YAW] / num;
+  angle_gyro_offset[PITCH] = gyro_avg[PITCH] / num;
+  angle_gyro_offset[ROLL] = gyro_avg[ROLL] / num;
+  angle_gyro_offset[YAW] = gyro_avg[YAW] / num;
+  angle_acc_offset[PITCH] = acc_avg[PITCH] / num;
+  angle_acc_offset[ROLL] = acc_avg[ROLL] / num;
+  angle_acc_offset[YAW] = acc_avg[YAW] / num;
 }
 
 
