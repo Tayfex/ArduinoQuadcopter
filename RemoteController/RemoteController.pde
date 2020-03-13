@@ -46,6 +46,8 @@ String portStream;                      // Port input stream
 
 PFont f;                                // GUI font
 
+int calibrateSend = 0;                  // Time a calibrate command has been send or 0
+
 boolean setupFinished = false;          // True as soon as loading has finished
 
 ControlDevice controller;               // Gamepad controller
@@ -75,7 +77,7 @@ void setup() {
 
   // Start communication with Arduino
   printArray(Serial.list());
-  port = new Serial(this, "/dev/rfcomm5", 115200);
+  port = new Serial(this, Serial.list()[2], 115200);
   println("Looking for gamepad");
 
   // Start communication with gamepad
@@ -93,6 +95,15 @@ void setup() {
 }
 
 void draw() {
+  // Draw info box if calibration has been send
+  if(calibrateSend != 0) {
+    if(millis() > calibrateSend + 1000) {
+      calibrateSend = 0; 
+    } else {
+      drawInfoBox("Calibrate send");
+      return;
+    }
+  }
   
   // Redraw display whenever recieving new data
   if (port.available() > 0) {
@@ -114,7 +125,7 @@ void draw() {
       println(portStream);
 
       // Check if recieved data matches protocol
-      if (portStream.length() > 3 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
+      if (portStream.length() > 4 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
 
         // Save recieved data
         String[] data = split(portStream.substring(2, portStream.length() - 3), '|');
@@ -185,33 +196,35 @@ void draw() {
     } else if(portStream != null) {
       // ----- Drone in SETUP MODE -----
 
+      // DEPRECATED:
       // Read port's full stream!
       // Because the draw() loop is way slower then the arduino sending data the whole buffer has to be made empty within one draw() loop
       // Otherwise the buffer is overflowing over time which is causing a huge delay! 
       // At the same time it has to be made sure that none of the messages is accidentially skipped during SETUP MODE (reliable communication)
       // In FLY MODE this isn't necessary anymore (unreliable communication)
-      while (portStream != null) {
+      
+      //while (portStream != null) {
 
-        // Check if data is setup message
-        if (portStream.length() > 5 && portStream.indexOf("SETUP") != -1) {
+      // Check if data is setup message
+      if (portStream.length() > 5 && portStream.indexOf("SETUP") != -1) {
 
-          // Print message on display
-          drawInfoBox(portStream.substring(portStream.indexOf("SETUP") + 7));
+        // Print message on display
+        drawInfoBox(portStream.substring(portStream.indexOf("SETUP") + 7));
 
-          // Check if setup is finished
-          if (portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
-            setupFinished = true;
-          }
-        } else {
-
-          // Print error
-          println("ERROR during setup | Invalid  data: " + portStream);
+        // Check if setup is finished
+        if (portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
+          setupFinished = true;
         }
+      } else {
+
+        // Print error
+        //println("ERROR during setup | Invalid  data: " + portStream);
+      }
 
         // Read the next complete message to make sure that the buffer is emtpy except the last bytes
         // which might be the first bytes of the next not yet full recieved message
-        portStream = port.readStringUntil('\n');
-      }
+        //portStream = port.readStringUntil('\n');
+      //}
     }
   }
 }
@@ -221,7 +234,7 @@ void draw() {
 */
 void sendGamepadInput() {
   // Read gamepad
-  int throttleGamepadNew = 1000 + (int) map(controller.getSlider("l2").getValue(), 0, 0, 1, 300) + (int) map(controller.getSlider("joystickRightY").getValue(), 0, -1, 0, 300);
+  int throttleGamepadNew = 1000 + (int) map(controller.getSlider("l2").getValue(), -1, 1, 0, 300) + (int) map(controller.getSlider("joystickRightY").getValue(), 0, -1, 0, 300);
 
   if (throttleGamepadNew != throttleGamepad) {
     throttleGamepad = throttleGamepadNew;
@@ -229,22 +242,23 @@ void sendGamepadInput() {
     if (throttleGamepad < 1000) {
       throttleGamepad = 1000;
     }
-
+    
     // Send gamepad throttle
     port.write(".t" + str(throttleGamepad) + ";");
+  }
 
-    // Send pitch
-    int pitch = (int) map(controller.getSlider("joystickLeftY").getValue(), 1, -1, -3, 3);
-    port.write(".p" + str(pitch) + ";");
+  // Send pitch
+  float pitch = (float) map(controller.getSlider("joystickLeftY").getValue(), 1, -1, -7, 7);
+  port.write(".p" + str(pitch) + ";");
 
-    // Send roll
-    int roll = (int) map(controller.getSlider("joystickLeftX").getValue(), 1, -1, -3, 3);
-    port.write(".p" + str(roll) + ";");
+  // Send roll
+  float roll = (float) map(controller.getSlider("joystickLeftX").getValue() - 0.08, 1, -1, 7, -7);
+  port.write(".r" + str(roll) + ";");
 
-    // Send calibrate angles
-    if(device.getButton("y").pressed()) {
-      port.write("calibrateAngles;");
-    }
+  // Send calibrate angles
+  if(controller.getButton("y").pressed()) {
+    port.write("calibrateAngles;");
+    calibrateSend = millis();
   }
 }
 
@@ -343,8 +357,8 @@ void displayBalance(int posX, int posY, float x, float y, float x2, float y2) {
   translate(posX, posY);
   
   // Draw desired balance point
-  x2 = map(x2, -90, 90, -190, 190);
-  y2 = map(y2, -90, 90, -190, 190);
+  x2 = map(x2, -15, 15, -190, 190);
+  y2 = map(y2, -15, 15, -190, 190);
   
   useColor(3);
   ellipseMode(CENTER);
