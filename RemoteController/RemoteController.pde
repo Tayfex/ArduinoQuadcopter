@@ -4,6 +4,7 @@ import org.gamecontrolplus.gui.*;
 
 import processing.serial.*;
 
+
 // --- SETTINGS ---
 
 int WINDOW_SIZE_X = 1120;               // Window width
@@ -11,6 +12,7 @@ int WINDOW_SIZE_Y = 500;                // Window height
 
 int RECT_BAR_SIZE_X = 100;              // Rect bar width
 int RECT_BAR_SIZE_Y = 300;              // Rect bar height
+
 
 // --- VARIABLES ---
 
@@ -44,10 +46,15 @@ String portStream;                      // Port input stream
 
 PFont f;                                // GUI font
 
+int calibrateSend = 0;                  // Time a calibrate command has been send or 0
+
 boolean setupFinished = false;          // True as soon as loading has finished
 
 ControlDevice controller;               // Gamepad controller
 ControlIO control;
+
+
+// --- PROGRAM ---
 
 void setup() {
   // Initialize lists
@@ -66,21 +73,17 @@ void setup() {
   drawDisplay();
 
   // Display loading screen
-  /*useColor(1);
-   text("Loading...", 560, 315);*/
   drawInfoBox("Loading");
 
   // Start communication with Arduino
   printArray(Serial.list());
-  port = new Serial(this, "/dev/rfcomm5", 115200);
+  port = new Serial(this, Serial.list()[2], 115200);
   println("Looking for gamepad");
 
   // Start communication with gamepad
   control = ControlIO.getInstance(this);
   println("Looking for gamepad");
   controller = control.filter(GCP.GAMEPAD).getMatchedDevice("xboxController");
-
-  
 
   // Check if gamepad has been found
   if (controller == null) {
@@ -92,6 +95,15 @@ void setup() {
 }
 
 void draw() {
+  // Draw info box if calibration has been send
+  if(calibrateSend != 0) {
+    if(millis() > calibrateSend + 1000) {
+      calibrateSend = 0; 
+    } else {
+      drawInfoBox("Calibrate send");
+      return;
+    }
+  }
   
   // Redraw display whenever recieving new data
   if (port.available() > 0) {
@@ -113,7 +125,7 @@ void draw() {
       println(portStream);
 
       // Check if recieved data matches protocol
-      if (portStream.length() > 3 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
+      if (portStream.length() > 4 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
 
         // Save recieved data
         String[] data = split(portStream.substring(2, portStream.length() - 3), '|');
@@ -130,6 +142,7 @@ void draw() {
           
           if(displayVersion == 1) {
             
+            // Unpack data according to 1D display verion
             throttle = float(data[0]);
             angle_current_pitch = float(data[1]);
             angle_desired_pitch = float(data[2]);
@@ -145,6 +158,7 @@ void draw() {
             
           } else if(displayVersion == 2) {
             
+            // Unpack data according to 2D display version
             throttle = float(data[0]);
             angle_current_pitch = float(data[1]);
             angle_current_roll = float(data[2]);
@@ -182,40 +196,45 @@ void draw() {
     } else if(portStream != null) {
       // ----- Drone in SETUP MODE -----
 
+      // DEPRECATED:
       // Read port's full stream!
       // Because the draw() loop is way slower then the arduino sending data the whole buffer has to be made empty within one draw() loop
       // Otherwise the buffer is overflowing over time which is causing a huge delay! 
       // At the same time it has to be made sure that none of the messages is accidentially skipped during SETUP MODE (reliable communication)
       // In FLY MODE this isn't necessary anymore (unreliable communication)
-      while (portStream != null) {
+      
+      //while (portStream != null) {
 
-        // Check if data is setup message
-        if (portStream.length() > 5 && portStream.indexOf("SETUP") != -1) {
+      // Check if data is setup message
+      if (portStream.length() > 5 && portStream.indexOf("SETUP") != -1) {
 
-          // Print message on display
-          drawInfoBox(portStream.substring(portStream.indexOf("SETUP") + 7));
+        // Print message on display
+        drawInfoBox(portStream.substring(portStream.indexOf("SETUP") + 7));
 
-          // Check if setup is finished
-          if (portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
-            setupFinished = true;
-          }
-        } else {
-
-          // Print error
-          println("ERROR during setup | Invalid  data: " + portStream);
+        // Check if setup is finished
+        if (portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
+          setupFinished = true;
         }
+      } else {
+
+        // Print error
+        //println("ERROR during setup | Invalid  data: " + portStream);
+      }
 
         // Read the next complete message to make sure that the buffer is emtpy except the last bytes
         // which might be the first bytes of the next not yet full recieved message
-        portStream = port.readStringUntil('\n');
-      }
+        //portStream = port.readStringUntil('\n');
+      //}
     }
   }
 }
 
+/*
+  Sends the input from the gamepad to the flight controller
+*/
 void sendGamepadInput() {
   // Read gamepad
-  int throttleGamepadNew = 1000 + (int) map(controller.getSlider("throttle1").getValue(), 0, -1, 0, 300) + (int) map(controller.getSlider("throttle2").getValue(), 0, -1, 0, 300);
+  int throttleGamepadNew = 1000 + (int) map(controller.getSlider("l2").getValue(), -1, 1, 0, 300) + (int) map(controller.getSlider("joystickRightY").getValue(), 0, -1, 0, 300);
 
   if (throttleGamepadNew != throttleGamepad) {
     throttleGamepad = throttleGamepadNew;
@@ -223,12 +242,29 @@ void sendGamepadInput() {
     if (throttleGamepad < 1000) {
       throttleGamepad = 1000;
     }
-
+    
     // Send gamepad throttle
     port.write(".t" + str(throttleGamepad) + ";");
   }
+
+  // Send pitch
+  float pitch = (float) map(controller.getSlider("joystickLeftY").getValue(), 1, -1, -7, 7);
+  port.write(".p" + str(pitch) + ";");
+
+  // Send roll
+  float roll = (float) map(controller.getSlider("joystickLeftX").getValue() - 0.08, 1, -1, 7, -7);
+  port.write(".r" + str(roll) + ";");
+
+  // Send calibrate angles
+  if(controller.getButton("y").pressed()) {
+    port.write("calibrateAngles;");
+    calibrateSend = millis();
+  }
 }
 
+/*
+  Draws the display according to the recieved data from the flight controller
+*/
 void drawDisplay() {
   if(displayVersion == 1) {
     drawDisplay1();
@@ -237,6 +273,9 @@ void drawDisplay() {
   }
 }
 
+/*
+  Draws the 1D version with rotation around just one axis- Used on test stand.
+*/
 void drawDisplay1() {
   // --- Draw display ---
   drawBackground();
@@ -262,6 +301,9 @@ void drawDisplay1() {
   displayGraph(angle_gyro_pitch, angle_acc_pitch, angle_current_pitch);
 }
 
+/*
+  Draws the 2D version with rotation around two axis. Used for actual flying.
+*/
 void drawDisplay2() {
   // --- Draw display ---
   drawBackground();
@@ -281,6 +323,9 @@ void drawDisplay2() {
   displayGraph(angle_gyro_pitch, angle_acc_pitch, angle_current_pitch);
 }
 
+/*
+  Draws a drone with 4 circle bars for speed and a balance display
+*/
 void displayDrone(int posX, int posY) {
   translate(posX, posY);
   
@@ -304,6 +349,201 @@ void displayDrone(int posX, int posY) {
   translate(-posX, -posY);
 }
 
+/*
+  Draws a balance diagramm showing the current rotation around two axis
+*/
+void displayBalance(int posX, int posY, float x, float y, float x2, float y2) {
+  pushMatrix();
+  translate(posX, posY);
+  
+  // Draw desired balance point
+  x2 = map(x2, -15, 15, -190, 190);
+  y2 = map(y2, -15, 15, -190, 190);
+  
+  useColor(3);
+  ellipseMode(CENTER);
+  ellipse(x2, -y2, 10, 10);
+  
+  // Draw current balance point
+  x = map(x, -15, 15, -190, 190);
+  y = map(y, -15, 15, -190, 190);
+  
+  useColor(2);
+  ellipseMode(CENTER);
+  ellipse(x, -y, 10, 10);
+  
+  popMatrix();
+}
+
+/*
+  Draws a circle graph displaying the current rotation around one axis
+*/
+void displayRotation(int posX, int posY, float scale, float value, float desiredValue) {
+  // Display: Angle
+  pushMatrix();
+
+  translate(posX, posY);
+  scale(scale);
+
+  useColor(3);
+  ellipse(0, 0, 300, 300);
+
+  useColor(0);
+  ellipse(0, 0, 280, 280);
+
+  useColor(3);
+  rectRotatedMirrored(0, 0, 250, 10, desiredValue);
+
+  useColor(1);
+  rectRotatedMirrored(0, 0, 250, 10, value);
+
+  useColor(0);
+  rectRotatedMirrored(0, 150, 140, 60, 0);
+
+  useColor(1);
+  textFont(f, 30);
+  text("Rotation", 0, 140);
+
+  popMatrix();
+}
+
+/*
+  Draws a circle grap displaying the current motor speed
+*/
+void displayMotorSpeeds(int posX, int posY, float scale, float value1, float value2) {
+  pushMatrix();
+
+  translate(posX, posY);
+  scale(scale);
+
+  useColor(3);
+  ellipse(0, 0, 300, 300);
+
+  useColor(0);
+  ellipse(0, 0, 280, 280);
+
+  useColor(1);
+  rectRotated(0, 0, 125, 10, value1);
+
+  useColor(1);
+  rectRotated(0, 0, 125, 10, value2);
+
+  useColor(0);
+  rectRotatedMirrored(0, 150, 140, 60, 0);
+
+  useColor(1);
+  textFont(f, 30);
+  text("Rotation", 0, 140);
+
+  popMatrix();
+}
+
+/*
+  Draws a bar graph
+*/ 
+void displayBar(int posX, int posY, String text, float scale, float value, float min, float max) {
+  pushMatrix();
+
+  value = abs(value);
+
+  translate(posX - 40, posY);
+  scale(scale);
+
+  useColor(3);
+  rect(0, 0, 80, 150);
+
+  useColor(2);
+  rect(0, 150, 80, - (value - min) / (max - min) * 150);
+
+  useColor(0);
+  textFont(f, 30);
+  text(int(value), 40, 100);
+
+  useColor(2);
+  textAlign(CENTER);
+  textFont(f, 20);
+  text(text, 40, 180);
+
+  popMatrix();
+}
+
+/*
+  Draws a ar graph in a circle
+*/
+void displayCircledBar(int posX, int posY, String text, float scale, float value, float min, float max) {
+  pushMatrix();
+
+  value = abs(value);
+
+  translate(posX - 75 * scale, posY - 75 * scale);
+  scale(scale);
+
+  useColor(0);
+  rect(0, 0, 150, 150);
+
+  useColor(2);
+  rect(0, 150, 150, - (value - min) / (max - min) * 150);
+
+  useColor(1);
+  textFont(f, 30);
+  text(int(value), 75, 100);
+
+  useColor(1);
+  textAlign(CENTER);
+  textFont(f, 20);
+  text(text, 75, 180);
+  
+  useColor(0);
+  noFill();
+  strokeWeight(50);
+  ellipseMode(CORNER);
+  ellipse(-20, -20, 190, 190);
+  
+  useColor(1);
+  noFill();
+  strokeWeight(11);
+  ellipseMode(CORNER);
+  ellipse(-3, -3, 156, 156);
+
+  popMatrix();
+}
+
+/*
+  Draws a circle graph
+*/
+void displayCircle(int posX, int posY, String text, float scale, float value, float min, float max) {
+  pushMatrix();
+
+  translate(posX, posY);
+  scale(scale);
+
+  useColor(3);
+  ellipse(0, 0, 300, 300);
+
+  useColor(1);
+  rectRotated(0, 0, 150, 10, 120 + ((value - min) / (max - min)) * 300);
+
+  useColor(0);
+  ellipse(0, 0, 280, 280);
+
+  useColor(1);
+  rectRotated(0, 0, 120, 10, 120 + ((value - min) / (max - min)) * 300);
+
+  useColor(0);
+  rectRotatedMirrored(0, 150, 140, 80, 0);
+
+  useColor(1);
+  textFont(f, 30);
+
+  text(value, 0, 70);
+  text(text, 0, 140);
+
+  popMatrix();
+}
+
+/*
+  Draws a graph with 3 input values
+*/
 void displayGraph(float graph1New, float graph2New, float graph3New) {  
   translate(100, 625);
 
@@ -375,184 +615,9 @@ void displayGraph(float graph1New, float graph2New, float graph3New) {
   translate(-100, -600);
 }
 
-void displayBalance(int posX, int posY, float x, float y, float x2, float y2) {
-  pushMatrix();
-  translate(posX, posY);
-  
-  // Draw desired balance point
-  x2 = map(x2, -90, 90, -190, 190);
-  y2 = map(y2, -90, 90, -190, 190);
-  
-  useColor(3);
-  ellipseMode(CENTER);
-  ellipse(x2, -y2, 10, 10);
-  
-  // Draw current balance point
-  x = map(x, -15, 15, -190, 190);
-  y = map(y, -15, 15, -190, 190);
-  
-  useColor(2);
-  ellipseMode(CENTER);
-  ellipse(x, -y, 10, 10);
-  
-  popMatrix();
-}
-
-// Display for the rotation
-void displayRotation(int posX, int posY, float scale, float value, float desiredValue) {
-  // Display: Angle
-  pushMatrix();
-
-  translate(posX, posY);
-  scale(scale);
-
-  useColor(3);
-  ellipse(0, 0, 300, 300);
-
-  useColor(0);
-  ellipse(0, 0, 280, 280);
-
-  useColor(3);
-  rectRotatedMirrored(0, 0, 250, 10, desiredValue);
-
-  useColor(1);
-  rectRotatedMirrored(0, 0, 250, 10, value);
-
-  useColor(0);
-  rectRotatedMirrored(0, 150, 140, 60, 0);
-
-  useColor(1);
-  textFont(f, 30);
-  text("Rotation", 0, 140);
-
-  popMatrix();
-}
-
-void displayMotorSpeeds(int posX, int posY, float scale, float value1, float value2) {
-  // Display: Angle
-  pushMatrix();
-
-  translate(posX, posY);
-  scale(scale);
-
-  useColor(3);
-  ellipse(0, 0, 300, 300);
-
-  useColor(0);
-  ellipse(0, 0, 280, 280);
-
-  useColor(1);
-  rectRotated(0, 0, 125, 10, value1);
-
-  useColor(1);
-  rectRotated(0, 0, 125, 10, value2);
-
-  useColor(0);
-  rectRotatedMirrored(0, 150, 140, 60, 0);
-
-  useColor(1);
-  textFont(f, 30);
-  text("Rotation", 0, 140);
-
-  popMatrix();
-}
-
-void displayBar(int posX, int posY, String text, float scale, float value, float min, float max) {
-  pushMatrix();
-
-  value = abs(value);
-
-  translate(posX - 40, posY);
-  scale(scale);
-
-  useColor(3);
-  rect(0, 0, 80, 150);
-
-  useColor(2);
-  rect(0, 150, 80, - (value - min) / (max - min) * 150);
-
-  useColor(0);
-  textFont(f, 30);
-  text(int(value), 40, 100);
-
-  useColor(2);
-  textAlign(CENTER);
-  textFont(f, 20);
-  text(text, 40, 180);
-
-  popMatrix();
-}
-
-void displayCircledBar(int posX, int posY, String text, float scale, float value, float min, float max) {
-  pushMatrix();
-
-  value = abs(value);
-
-  translate(posX - 75 * scale, posY - 75 * scale);
-  scale(scale);
-
-  useColor(0);
-  rect(0, 0, 150, 150);
-
-  useColor(2);
-  rect(0, 150, 150, - (value - min) / (max - min) * 150);
-
-  useColor(1);
-  textFont(f, 30);
-  text(int(value), 75, 100);
-
-  useColor(1);
-  textAlign(CENTER);
-  textFont(f, 20);
-  text(text, 75, 180);
-  
-  useColor(0);
-  noFill();
-  strokeWeight(50);
-  ellipseMode(CORNER);
-  ellipse(-20, -20, 190, 190);
-  
-  useColor(1);
-  noFill();
-  strokeWeight(11);
-  ellipseMode(CORNER);
-  ellipse(-3, -3, 156, 156);
-
-  popMatrix();
-}
-
-void displayCircle(int posX, int posY, String text, float scale, float value, float min, float max) {
-  // Display: Angle
-  pushMatrix();
-
-  translate(posX, posY);
-  scale(scale);
-
-  useColor(3);
-  ellipse(0, 0, 300, 300);
-
-  useColor(1);
-  rectRotated(0, 0, 150, 10, 120 + ((value - min) / (max - min)) * 300);
-
-  useColor(0);
-  ellipse(0, 0, 280, 280);
-
-  useColor(1);
-  rectRotated(0, 0, 120, 10, 120 + ((value - min) / (max - min)) * 300);
-
-  useColor(0);
-  rectRotatedMirrored(0, 150, 140, 80, 0);
-
-  useColor(1);
-  textFont(f, 30);
-
-  text(value, 0, 70);
-  text(text, 0, 140);
-
-  popMatrix();
-}
-
-// Draws a rect rotated mirrored around it's center
+/*
+  Draws a rect rotated mirrored around it's center
+*/
 void rectRotatedMirrored(int posX, int posY, int sizeX, int sizeY, float angle) {
   // Isolate rotation
   pushMatrix();
@@ -566,7 +631,9 @@ void rectRotatedMirrored(int posX, int posY, int sizeX, int sizeY, float angle) 
   popMatrix();
 }
 
-// Draw a rect rotated around it's center
+/*
+  Draw a rect rotated around it's center
+*/
 void rectRotated(int posX, int posY, int sizeX, int sizeY, float angle) {
   // Isolate rotation
   pushMatrix();
@@ -580,6 +647,9 @@ void rectRotated(int posX, int posY, int sizeX, int sizeY, float angle) {
   popMatrix();
 }
 
+/*
+  Draws a info box with a given message
+*/
 void drawInfoBox(String text) {
   translate(0, 100);
 
@@ -608,6 +678,53 @@ void drawInfoBox(String text) {
   translate(0, -100);
 }
 
+/*
+  Draws the background. This is used to "delete" the current drawing
+*/
+void drawBackground() {
+  useColor(0);
+  rect(0, 0, WINDOW_SIZE_X, 750);
+}
+
+/*
+  Changes the color to one of the in the pattern included ones
+*/
+void useColor(int index) {
+  // White for background
+  if (index == 0) {
+    stroke(255, 255, 255);
+    fill(255, 255, 255);
+  }
+
+  // Blue for main displays
+  if (index == 1) {
+    stroke(0, 204, 204);
+    fill(0, 204, 204);
+  }
+
+  // Orange for secondary displays
+  if (index == 2) {
+    stroke(231, 118, 50);
+    fill(231, 118, 50);
+  }
+
+  // Gray for display backgrounds
+  if (index == 3) {
+    stroke(208, 208, 208);
+    fill(208, 208, 208);
+  }
+
+  // Blue for header (?)
+  if (index == 4) {
+    stroke(89, 118, 148);
+    fill(89, 118, 148);
+  }
+}
+
+/*
+  This function is called whenever a key is pressed. It handle the user's input
+  and sends it to the flight controller
+*/
 void keyPressed() {
   if (keyCode == UP) {
     println("Increasing throttle");
@@ -654,44 +771,5 @@ void keyPressed() {
   } else {
     println("STOP");
     port.write("stop;");
-  }
-}
-
-//Draws the background. This is used to "delete" the current drawing
-void drawBackground() {
-  useColor(0);
-  rect(0, 0, WINDOW_SIZE_X, 750);
-}
-
-// Changes the color to one of the in the pattern included ones
-void useColor(int index) {
-  // White for background
-  if (index == 0) {
-    stroke(255, 255, 255);
-    fill(255, 255, 255);
-  }
-
-  // Blue for main displays
-  if (index == 1) {
-    stroke(0, 204, 204);
-    fill(0, 204, 204);
-  }
-
-  // Orange for secondary displays
-  if (index == 2) {
-    stroke(231, 118, 50);
-    fill(231, 118, 50);
-  }
-
-  // Gray for display backgrounds
-  if (index == 3) {
-    stroke(208, 208, 208);
-    fill(208, 208, 208);
-  }
-
-  // Blue for header (?)
-  if (index == 4) {
-    stroke(89, 118, 148);
-    fill(89, 118, 148);
   }
 }
