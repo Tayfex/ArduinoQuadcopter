@@ -11,13 +11,13 @@ int THROTTLE_MAXIMUM = 1800;                        // Maximum throttle of a mot
 float COMPLEMENTARY_ANGLE = 0.98;                   // Complementary filter for combining acc and gyro
 
 double throttle = 1000;                             // Desired throttle
-float angle_desired[3] = {0, 0, 0};                 // Desired angle
+float angle_desired[3] = {0.0, 0.0, 0.0};           // Desired angle
 
 float gain_p[3] = {1.5, 1.5, 0};                    // Gain proportional
 float gain_i[3] = {0, 0, 0};                        // Gain integral
-float gain_d[3] = {0.4, 0.4, 0};                // Gain derivetive
+float gain_d[3] = {0.4, 0.4, 0};                    // Gain derivetive
 
-float filter = 0.9;                                // Complementary filter for pid
+float filter = 0.9;                                 // Complementary filter for pid
 
 int mode = 0;                                       // Mode for testing purpose: 0 = all motors | 1 = motor 1 & 3 | 2 = motor 2 & 4
 
@@ -325,9 +325,11 @@ void receiveControl() {
       if(command[1] == 't') {
         throttle = command.substring(2).toInt();                    // Set throttle to value
       } else if(command[1] == 'p') {
-        // TODO: SET PITCH
+        angle_desired[PITCH] = command.substring(2).toFloat();      // Set desired PITCH
       } else if(command[1] == 'r') {
-        // TODO: SET ROLL
+        angle_desired[ROLL] = command.substring(2).toFloat();       // Set Desired ROLL
+      } else if(command[1] == 'y') {
+        angle_desired[YAW] = command.substring(2).toFloat();        // Set desired YAW
       }
     } else {
       // Receive increase/decrease command
