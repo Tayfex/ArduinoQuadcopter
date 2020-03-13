@@ -1,2 +1,3 @@
 Quadcopter remote control
-throttle	Throttle	3	SLIDER	Y-Achse	0	1.0	0.0
+throttle1	Throttle 1	3	SLIDER	Y-Achse	0	1.0	0.0
+throttle2	Throttle 2	3	SLIDER	Y-Rotation	0	1.0	0.0

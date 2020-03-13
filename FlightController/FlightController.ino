@@ -3,6 +3,8 @@
 
 /* --- SETTINGS --- */
 
+int DISPLAY_VERSION = 2;                            // Which display should be used for the remote controller? 1D or 2D version?
+
 int THROTTLE_MINIMUM = 1000;                        // Minimum throttle of a motor
 int THROTTLE_MAXIMUM = 1800;                        // Maximum throttle of a motor
 
@@ -127,7 +129,12 @@ void loop() {
   }
 
   /* Send calculated and measured data to the remote controller */
-  sendData(ROLL);
+  if(DISPLAY_VERSION == 1) {
+    sendData1(ROLL);
+  } else if(DISPLAY_VERSION == 2) {
+    sendData2();
+  }
+  
 }
 
 
@@ -328,12 +335,12 @@ void recieveControl() {
 
 
 /**
- * Sends the controller's settings and measured data to the remote controller
+ * Sends the controller's settings and measured data for one dimension to the remote controller
  */
-void sendData(int angleType) {
-  Serial.println("B" + 
-    String(angle_current[angleType]) + "|" + 
+void sendData1(int angleType) {
+  Serial.println("B1" + 
     String(throttle) + "|" + 
+    String(angle_current[angleType]) + "|" + 
     String(angle_desired[angleType]) + "|" + 
     String(pid_current[angleType]) + "|" + 
     String(pid_p[angleType]) + "|" + 
@@ -345,4 +352,24 @@ void sendData(int angleType) {
     String(angle_gyro[angleType], 6) + "|" + 
     String(angle_acc[angleType], 6) + "|" + 
     String(mode) + "E");
+}
+
+/**
+ * Sends the controller's settings and measured data for two dimensions to the remote controller
+ */
+void sendData2() {
+  Serial.println("B2" +
+    String(throttle) + "|" + 
+    String(angle_current[PITCH]) + "|" + 
+    String(angle_current[ROLL]) + "|" + 
+    String(angle_desired[PITCH]) + "|" +
+    String(angle_desired[ROLL]) + "|" +
+    String(pid_current[PITCH]) + "|" + 
+    String(pid_current[ROLL]) + "|" + 
+    String(gain_p[PITCH]) + "|" + 
+    String(gain_d[PITCH], 3) + "|" + 
+    String(angle_gyro[PITCH], 6) + "|" + 
+    String(angle_gyro[ROLL], 6) + "|" +
+    String(angle_acc[PITCH], 6) + "|" +
+    String(angle_acc[ROLL], 6) + "E");
 }
