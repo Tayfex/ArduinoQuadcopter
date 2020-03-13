@@ -72,7 +72,7 @@ void setup() {
 
   // Start communication with Arduino
   printArray(Serial.list());
-  port = new Serial(this, "COM3", 115200);
+  port = new Serial(this, "/dev/rfcomm5", 115200);
   println("Looking for gamepad");
 
   // Start communication with gamepad
@@ -100,7 +100,7 @@ void draw() {
     portStream = port.readStringUntil('\n');
 
     // ----- Drone in FLY MODE -----
-    if (setupFinished && portStream != null) {
+    if (portStream != null && portStream.charAt(0) == 'B') {
 
       // Send gamepad data
       sendGamepadInput();
@@ -179,7 +179,7 @@ void draw() {
         // Clear the buffer except the last 300 bytes
         port.readBytes(port.available() - 300);
       }
-    } else if (portStream != null) {
+    } else if(portStream != null) {
       // ----- Drone in SETUP MODE -----
 
       // Read port's full stream!
@@ -388,8 +388,8 @@ void displayBalance(int posX, int posY, float x, float y, float x2, float y2) {
   ellipse(x2, -y2, 10, 10);
   
   // Draw current balance point
-  x = map(x, -90, 90, -190, 190);
-  y = map(y, -90, 90, -190, 190);
+  x = map(x, -15, 15, -190, 190);
+  y = map(y, -15, 15, -190, 190);
   
   useColor(2);
   ellipseMode(CENTER);
