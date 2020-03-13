@@ -11,13 +11,13 @@ int THROTTLE_MAXIMUM = 1800;                        // Maximum throttle of a mot
 float COMPLEMENTARY_ANGLE = 0.98;                   // Complementary filter for combining acc and gyro
 
 double throttle = 1000;                             // Desired throttle
-float angle_desired[3] = {0, 0, 0};                 // Desired angle
+float angle_desired[3] = {0.0, 0.0, 0.0};           // Desired angle
 
 float gain_p[3] = {1.5, 1.5, 0};                    // Gain proportional
 float gain_i[3] = {0, 0, 0};                        // Gain integral
-float gain_d[3] = {0.4, 0.4, 0};                // Gain derivetive
+float gain_d[3] = {0.4, 0.4, 0};                    // Gain derivetive
 
-float filter = 0.9;                                // Complementary filter for pid
+float filter = 0.9;                                 // Complementary filter for pid
 
 int mode = 0;                                       // Mode for testing purpose: 0 = all motors | 1 = motor 1 & 3 | 2 = motor 2 & 4
 
@@ -42,6 +42,8 @@ float pid_d[3] = {0, 0, 0};                         // PID derivitive error
 float angle_current[3];                             // Angle measured after filtering
 float angle_acc[3];                                 // Angle measured using accelerometer
 float angle_gyro[3];                                // Angle measured using gyro
+float angle_acc_offset[3] = {0.0,0.0,0.0};          // Offsets for gyro angle measurement
+float angle_gyro_offset[3] = {0.0,0.0,0.0};         // Offsets for acc angle measurement
 
 int16_t angle_acc_raw[3];                           // Accelerator raw data
 int16_t angle_gyro_raw[3];                          // Gyro raw data
@@ -114,8 +116,8 @@ void loop() {
   /* Filter the data to reduce noise */
   filterAngle();
 
-  /* Recieve the remote controller's commands */
-  recieveControl();
+  /* Receive the remote controller's commands */
+  receiveControl();
 
   /* Calculate PID */
   calculatePid();
@@ -212,7 +214,7 @@ void filterAngle() {
   angle_new[ROLL] = COMPLEMENTARY_ANGLE * (angle_current[ROLL] + angle_gyro[ROLL] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[ROLL];            // Positive angle -> right
   angle_new[YAW] = COMPLEMENTARY_ANGLE * (angle_current[YAW] + angle_gyro[YAW] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[YAW];                // Calculated by chris
 
-  float value = 0.5;
+  float value = 0.5; // some weird stuff is going on here, this is we we use the value variable
 
   angle_current[PITCH] = value * angle_current[PITCH] + (1 - value) * angle_new[PITCH];
   angle_current[ROLL] = value * angle_current[ROLL] + (1 - value) * angle_new[ROLL];
@@ -230,7 +232,7 @@ void readGyro() {
   Wire.endTransmission(false);
   Wire.requestFrom(MPU_ADDRESS, 6, true);
 
-  /* Save recieved answer */
+  /* Save received answer */
   angle_gyro_raw[PITCH] = Wire.read()<<8|Wire.read();
   angle_gyro_raw[ROLL] = Wire.read()<<8|Wire.read();
   angle_gyro_raw[YAW] = Wire.read()<<8|Wire.read();         // Added, did not check if that works
@@ -240,8 +242,10 @@ void readGyro() {
   angle_gyro[ROLL] = angle_gyro_raw[ROLL] / 131.0;
   angle_gyro[YAW] = angle_gyro_raw[YAW] / 131.0;              // Added, did not check if that works
 
-  /* Adjust offsets */
-  angle_gyro[0] = angle_gyro[0] + 2.5;
+  /* Subtract gyro offset value, this is done here, because the total angle is calculated by integration */
+  angle_gyro[PITCH] = angle_gyro[PITCH] - angle_gyro_offset[PITCH];
+  angle_gyro[ROLL] = angle_gyro[ROLL] - angle_gyro_offset[ROLL];
+  angle_gyro[YAW] = angle_gyro[YAW] - angle_gyro_offset[YAW];
 }
 
 
@@ -255,7 +259,7 @@ void readAccelerometer() {
   Wire.endTransmission(false);
   Wire.requestFrom(MPU_ADDRESS, 6, true);
 
-  /* Save recieved answer */
+  /* Save received answer */
   angle_acc_raw[PITCH] = Wire.read()<<8|Wire.read();
   angle_acc_raw[ROLL] = Wire.read()<<8|Wire.read();
   angle_acc_raw[YAW] = Wire.read()<<8|Wire.read();
@@ -264,29 +268,71 @@ void readAccelerometer() {
   angle_acc[PITCH] = atan((angle_acc_raw[ROLL] / 16384.0) / sqrt(pow((angle_acc_raw[PITCH] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
   angle_acc[ROLL] = atan(-1 * (angle_acc_raw[PITCH] / 16384.0) / sqrt(pow((angle_acc_raw[ROLL] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
   angle_acc[YAW] = angle_acc_raw[YAW] / 16384.0;                   // Calculated by my own, don't know if its correct...
-  
+
+  /* Subtract Acc angle offsets, this is done here, since the total angle is calculated by integration and offsets there interfere with integration */
+  angle_acc[PITCH] = angle_acc[PITCH] - angle_acc_offset[PITCH];
+  angle_acc[ROLL] = angle_acc[ROLL] - angle_acc_offset[ROLL];
+  angle_acc[YAW] = angle_acc[YAW] - angle_acc_offset[YAW];
 }
 
 
 /**
- * Recieve remote control's command
+ *  Takes 100 samples of current angle measurement and takes average as new offset
+ */
+void calibrateAngleOffsets() {
+  float num = 100.0;
+  float gyro_avg[3] = {0.0,0.0,0.0};
+  float acc_avg[3] = {0.0,0.0,0.0};
+  for(int i = 0; i < num; i++){
+    // Read Gyro angles and add to average
+    readGyro();
+    gyro_avg[PITCH] += angle_gyro[PITCH];
+    gyro_avg[ROLL] += angle_gyro[ROLL];
+    gyro_avg[YAW] += angle_gyro[YAW];
+    
+    // Read ACC angles and add to average
+    readAccelerometer();
+    acc_avg[PITCH] += angle_acc[PITCH];
+    acc_avg[ROLL] += angle_acc[ROLL];
+    acc_avg[YAW] += angle_acc[YAW];
+  }
+
+  // divide sums by number of measurements to get average
+  angle_gyro_offset[PITCH] = gyro_avg[PITCH] / num;
+  angle_gyro_offset[ROLL] = gyro_avg[ROLL] / num;
+  angle_gyro_offset[YAW] = gyro_avg[YAW] / num;
+  angle_acc_offset[PITCH] = acc_avg[PITCH] / num;
+  angle_acc_offset[ROLL] = acc_avg[ROLL] / num;
+  angle_acc_offset[YAW] = acc_avg[YAW] / num;
+}
+
+
+/**
+ * Receive remote control's command
  * 
  * There are two kind of commands: increase/decrease some value or it's direct value.
  * Direct value commands start with a '.'
  * Each command is determinated with ';'
  */
-void recieveControl() {
+void receiveControl() {
   if(Serial.available()) {
+    // Read until end of command
     String command = Serial.readStringUntil(';');
 
     if(command[0] == '.') {
-      // Recieve direct value command
+      // Receive direct value command
 
       if(command[1] == 't') {
         throttle = command.substring(2).toInt();                    // Set throttle to value
+      } else if(command[1] == 'p') {
+        angle_desired[PITCH] = command.substring(2).toFloat();      // Set desired PITCH
+      } else if(command[1] == 'r') {
+        angle_desired[ROLL] = command.substring(2).toFloat();       // Set Desired ROLL
+      } else if(command[1] == 'y') {
+        angle_desired[YAW] = command.substring(2).toFloat();        // Set desired YAW
       }
     } else {
-      // Recieve increase/decrease command
+      // Receive increase/decrease command
 
       if(command == "throttle+") {
         throttle += 50;                                             // Increase throttle
@@ -302,6 +348,8 @@ void recieveControl() {
         }
       } else if(command == "stop") {
         throttle = THROTTLE_MINIMUM;                                // Turn off all motors
+      } else if(command == "calibrateAngles") {
+        calibrateAngleOffsets();                                    // Calibrate gyro and accelerometer offsets
       } else if(command == "gainP+") {
         gain_p[PITCH] = gain_p[PITCH] + 0.1;                        // Increase P gain for pitch
         gain_p[ROLL] = gain_p[ROLL] + 0.1;                          // Increase P gain for roll
