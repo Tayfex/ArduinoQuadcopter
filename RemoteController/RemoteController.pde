@@ -13,6 +13,8 @@ int WINDOW_SIZE_Y = 500;                // Window height
 int RECT_BAR_SIZE_X = 100;              // Rect bar width
 int RECT_BAR_SIZE_Y = 300;              // Rect bar height
 
+int PORT_NUMBER = 3;                    // Index of the serial port
+int GRAPH_ZOOM = 3;                     // Zoom of the graph
 
 // --- VARIABLES ---
 
@@ -47,6 +49,7 @@ String portStream;                      // Port input stream
 PFont f;                                // GUI font
 
 int calibrateSend = 0;                  // Time a calibrate command has been send or 0
+int sendInput = 0;
 
 boolean setupFinished = false;          // True as soon as loading has finished
 
@@ -77,13 +80,21 @@ void setup() {
 
   // Start communication with Arduino
   printArray(Serial.list());
-  port = new Serial(this, Serial.list()[2], 115200);
+  port = new Serial(this, Serial.list()[PORT_NUMBER], 115200);
+
   println("Looking for gamepad");
 
   // Start communication with gamepad
   control = ControlIO.getInstance(this);
   println("Looking for gamepad");
+  println(control.deviceListToText("---"));
   controller = control.filter(GCP.GAMEPAD).getMatchedDevice("xboxController");
+  //controller = control.getDevice(4);
+  
+  if (controller == null) {
+    println("Gamepad not found");
+    System.exit(-1); // End the program NOW!
+  }
 
   // Check if gamepad has been found
   if (controller == null) {
@@ -106,127 +117,115 @@ void draw() {
   }
   
   // Redraw display whenever recieving new data
-  if (port.available() > 0) {
+  if (port.available() > 100) {
 
     // Read port stream
-    portStream = port.readStringUntil('\n');
+    portStream = port.readString();
+    String dataString = findDataInString(portStream);
 
     // ----- Drone in FLY MODE -----
-    if (portStream != null && portStream.charAt(0) == 'B') {
+    if (dataString != "") {
 
-      // Send gamepad data
-      sendGamepadInput();
-
-      // Read again if recieve data are invalid because this might be due to the cleaning of the buffer
-      if (!(portStream.length() > 3 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E')) {
-        portStream = port.readStringUntil('\n');
-      }
-      
-      println(portStream);
-
-      // Check if recieved data matches protocol
-      if (portStream.length() > 4 && portStream.charAt(0) == 'B' && portStream.charAt(portStream.length() - 3) == 'E') {
-
-        // Save recieved data
-        String[] data = split(portStream.substring(2, portStream.length() - 3), '|');
-
-        // Check if recieved data are complete
-        if (data.length > 12) {
-
-          // Unpack data
-          if(portStream.charAt(1) == '1') {
-            displayVersion = 1;
-          } else if(portStream.charAt(1) == '2') {
-            displayVersion = 2; 
-          }
-          
-          if(displayVersion == 1) {
-            
-            // Unpack data according to 1D display verion
-            throttle = float(data[0]);
-            angle_current_pitch = float(data[1]);
-            angle_desired_pitch = float(data[2]);
-            pid_current_pitch = float(data[3]);
-            pid_p = float(data[4]);
-            pid_d = float(data[5]);
-            gain_p = float(data[6]);
-            gain_d = float(data[7]);
-            time_elapsed = float(data[8]);
-            filter = float(data[9]);
-            angle_gyro_pitch = float(data[10]);
-            angle_acc_pitch = float(data[11]);
-            
-          } else if(displayVersion == 2) {
-            
-            // Unpack data according to 2D display version
-            throttle = float(data[0]);
-            angle_current_pitch = float(data[1]);
-            angle_current_roll = float(data[2]);
-            angle_desired_pitch = float(data[3]);
-            angle_desired_roll = float(data[4]);
-            pid_current_pitch = float(data[5]);
-            pid_current_roll = float(data[6]);
-            gain_p = float(data[7]);
-            gain_d = float(data[8]);
-            angle_gyro_pitch = float(data[9]);
-            angle_gyro_roll = float(data[10]);
-            angle_acc_pitch = float(data[11]);
-            angle_acc_roll = float(data[12]);
-          }
-
-          // Redraw display
-          drawDisplay();
-        } else {
-
-          // Print error
-          println("ERROR during runtime | Data incomplete: " + portStream);
-        }
-      } else {
-
-        // Print error
-        println("ERROR during runtime | Invalid data: " + portStream);
-      }
-
-      // Clear buffer after reading to avoid delay due to buffer overflow
-      if (port.available() > 500) {
-
-        // Clear the buffer except the last 300 bytes
-        port.readBytes(port.available() - 300);
-      }
-    } else if(portStream != null) {
-      // ----- Drone in SETUP MODE -----
-
-      // DEPRECATED:
-      // Read port's full stream!
-      // Because the draw() loop is way slower then the arduino sending data the whole buffer has to be made empty within one draw() loop
-      // Otherwise the buffer is overflowing over time which is causing a huge delay! 
-      // At the same time it has to be made sure that none of the messages is accidentially skipped during SETUP MODE (reliable communication)
-      // In FLY MODE this isn't necessary anymore (unreliable communication)
-      
-      //while (portStream != null) {
-
-      // Check if data is setup message
-      if (portStream.length() > 5 && portStream.indexOf("SETUP") != -1) {
-
-        // Print message on display
-        drawInfoBox(portStream.substring(portStream.indexOf("SETUP") + 7));
-
-        // Check if setup is finished
-        if (portStream.length() > 15 && portStream.substring(0, 15).equals("SETUP: Finished")) {
-          setupFinished = true;
-        }
-      } else {
-
-        // Print error
-        //println("ERROR during setup | Invalid  data: " + portStream);
-      }
-
-        // Read the next complete message to make sure that the buffer is emtpy except the last bytes
-        // which might be the first bytes of the next not yet full recieved message
-        //portStream = port.readStringUntil('\n');
+      // Send gamepad data every third frame to reduce the amount of data send or the bluetooth module might crash
+      //if(sendInput > 3) {
+      //  //sendGamepadInput();
+      //  sendInput = 0;
       //}
+      //sendGamepadInput();
+      
+      //sendInput += 1;
+      
+      println(dataString);
+
+      // Save recieved data
+      String[] data = split(dataString.substring(2, dataString.length() - 1), '|');
+
+      // Check if recieved data are complete
+      if (data.length > 12) {
+
+        // Unpack data
+        if(dataString.charAt(1) == '1') {
+          displayVersion = 1;
+        } else if(dataString.charAt(1) == '2') {
+          displayVersion = 2; 
+        }
+        
+        if(displayVersion == 1) {
+          
+          // Unpack data according to 1D display verion
+          throttle = float(data[0]);
+          angle_current_pitch = float(data[1]);
+          angle_desired_pitch = float(data[2]);
+          pid_current_pitch = float(data[3]);
+          pid_p = float(data[4]);
+          pid_d = float(data[5]);
+          gain_p = float(data[6]);
+          gain_d = float(data[7]);
+          time_elapsed = float(data[8]);
+          filter = float(data[9]);
+          angle_gyro_pitch = float(data[10]);
+          angle_acc_pitch = float(data[11]);
+          
+        } else if(displayVersion == 2) {
+          
+          // Unpack data according to 2D display version
+          throttle = float(data[0]);
+          angle_current_pitch = float(data[1]);
+          angle_current_roll = float(data[2]);
+          angle_desired_pitch = float(data[3]);
+          angle_desired_roll = float(data[4]);
+          pid_current_pitch = float(data[5]);
+          pid_current_roll = float(data[6]);
+          gain_p = float(data[7]);
+          gain_d = float(data[8]);
+          angle_gyro_pitch = float(data[9]);
+          angle_gyro_roll = float(data[10]);
+          angle_acc_pitch = float(data[11]);
+          angle_acc_roll = float(data[12]);
+        }
+
+        // Redraw display
+        drawDisplay();
+      } else {
+
+        // Print error
+        log("ERROR 1 | Data incomplete: " + portStream);
+      }
+    }
+    else {
+       log("ERROR 2 | Data incomplete: " + portStream);
     }
   }
+  else {
+    log("ERROR 3 | Not enough data yet: " + port.available());
+  }
+  
+  //sendGamepadInput();
+  if(sendInput > 3) {
+      sendGamepadInput();
+      sendInput = 0;
+    }
+    
+    sendInput += 1;
+  //sendGamepadInput();
+}
+
+void log(String message) {
+  println("[" + millis() + "] " + message);
+}
+
+/*
+  Find the actual data in the given string
+*/
+String findDataInString(String data) {
+  int start = data.indexOf("B");
+  int end = data.indexOf("E", start);
+  
+  if(start != -1 && end != -1) {
+    return data.substring(start, end + 1);
+  }
+  
+  return "";
 }
 
 /*
@@ -234,7 +233,7 @@ void draw() {
 */
 void sendGamepadInput() {
   // Read gamepad
-  int throttleGamepadNew = 1000 + (int) map(controller.getSlider("l2").getValue(), -1, 1, 0, 300) + (int) map(controller.getSlider("joystickRightY").getValue(), 0, -1, 0, 300);
+  int throttleGamepadNew = 1000 + (int) map(controller.getSlider("l2").getValue(), 0, 1, 0, 300) + (int) map(controller.getSlider("joystickRightY").getValue(), 0, -1, 0, 300);
 
   if (throttleGamepadNew != throttleGamepad) {
     throttleGamepad = throttleGamepadNew;
@@ -333,6 +332,9 @@ void displayDrone(int posX, int posY) {
   displayCircledBar(-170, -170, "", 0.8, throttle + pid_current_pitch - pid_current_roll, 1000, 2000);
   displayCircledBar(-170, 170, "", 0.8, throttle - pid_current_pitch - pid_current_roll, 1000, 2000);
   displayCircledBar(170, 170, "", 0.8, throttle - pid_current_pitch + pid_current_roll, 1000, 2000);
+  
+  text(angle_current_pitch, 0, -170);
+  text(angle_current_roll, -170, 0);
   
   useColor(1);
   rectMode(CENTER);
@@ -562,11 +564,14 @@ void displayGraph(float graph1New, float graph2New, float graph3New) {
   stroke(0, 0, 0);
   line(0, 0, 920, 0);
 
-  int stepSize = 2;
+
+  int zoom = (int) pow(2, GRAPH_ZOOM);
+  int samplePoints = 920 / zoom;
+  int stepSize = 920 / samplePoints;
 
 
   // Graph 1
-  if (graph1.size() > 460) {
+  if (graph1.size() > samplePoints) {
     graph1.remove(0);
   }
 
@@ -582,7 +587,7 @@ void displayGraph(float graph1New, float graph2New, float graph3New) {
 
 
   // Graph 2
-  if (graph2.size() > 460) {
+  if (graph2.size() >samplePoints) {
     graph2.remove(0);
   }
 
@@ -598,7 +603,7 @@ void displayGraph(float graph1New, float graph2New, float graph3New) {
 
 
   // Graph 3
-  if (graph3.size() > 460) {
+  if (graph3.size() > samplePoints) {
     graph3.remove(0);
   }
 

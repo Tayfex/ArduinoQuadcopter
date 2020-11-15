@@ -1,13 +1,12 @@
 Quadcopter remote controller
-joystickLeftX	Left joystick right/left	3	SLIDER	x	0	1.0	0.0
-joystickLeftY	Left joystick up/down	3	SLIDER	y	0	1.0	0.0
-joystickRightX	Right joystick right/left	3	SLIDER	rx	0	1.0	0.0
-joystickRightY	Right joystick up/down	3	SLIDER	ry	0	1.0	0.0
-l1	Left 1	1	BUTTON	Left Thumb	0	0.0	0.0
-l2	Left 2	3	SLIDER	z	0	1.0	0.0
-r1	Right 1	1	BUTTON	Right Thumb	0	0.0	0.0
-r2	Right 2	3	SLIDER	rz	0	1.0	0.0
-a	A	1	BUTTON	A	0	0.0	0.0
-b	B	1	BUTTON	B	0	0.0	0.0
-x	X	1	BUTTON	X	0	0.0	0.0
-y	Y	1	BUTTON	Y	0	0.0	0.0
+joystickLeftX	Left joystick right/left	3	SLIDER	X-Achse	0	1.0	0.0
+joystickLeftY	Left joystick up/down	3	SLIDER	Y-Achse	0	1.0	0.0
+joystickRightX	Right joystick right/left	3	SLIDER	X-Rotation	0	1.0	0.0
+joystickRightY	Right joystick up/down	3	SLIDER	Y-Rotation	0	1.0	0.0
+l1	Left 1	1	BUTTON	Taste 4	0	0.0	0.0
+l2	Left 2	3	SLIDER	Z-Achse	0	1.0	0.0
+r1	Right 1	1	BUTTON	Taste 5	0	0.0	0.0
+a	A	1	BUTTON	Taste 0	0	0.0	0.0
+b	B	1	BUTTON	Taste 1	0	0.0	0.0
+x	X	1	BUTTON	Taste 2	0	0.0	0.0
+y	Y	1	BUTTON	Taste 3	0	0.0	0.0

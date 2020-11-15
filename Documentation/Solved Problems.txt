@@ -1,0 +1,2 @@
+Bluetooth Modul in AT Modus hat geholfen, eine stabile Verbindung aufzubauen, die nicht immer wieder abstürtzt. 
+Dazu habe ich die Baudrate des Modules auf 115200 angepasst. Zusätzlich auch noch den Namen und Passwort geändert (aber das ist vllt nicht zwangsläufig notwendig)

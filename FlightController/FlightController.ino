@@ -8,7 +8,7 @@ int DISPLAY_VERSION = 2;                            // Which display should be u
 int THROTTLE_MINIMUM = 1000;                        // Minimum throttle of a motor
 int THROTTLE_MAXIMUM = 1800;                        // Maximum throttle of a motor
 
-float COMPLEMENTARY_ANGLE = 0.98;                   // Complementary filter for combining acc and gyro
+float COMPLEMENTARY_FILTER = 0.98;                   // Complementary filter for combining acc and gyro
 
 double throttle = 1000;                             // Desired throttle
 float angle_desired[3] = {0.0, 0.0, 0.0};           // Desired angle
@@ -59,10 +59,19 @@ Servo motor_4;                                      // Motor back right
 
 float rad_to_deg = 180/3.141592654;                 // Constant for convert radian to degrees
 
+float blink_counter = 0;                            // The blink counter is used to let the build-in LED blink every x loops to see whether the programm is still running or not
+bool blink_status = false;                             // Is the build-in LED currently on or off?
+
+float lastCommand = 0;                              // Time when the last comment has been recieved
+
+int sendDataCounter = 0;                            // Counts when data has been sent the last time to reduce amount of data
+
 void setup() {
 
   /* Begin serial communication for remote control */
   Serial.begin(115200);
+
+  //while(!Serial) {}
   
   Serial.println("SETUP: Start");
 
@@ -98,6 +107,8 @@ void setup() {
   /* Calibrate the motors */
   calibrateMotors();
 
+  pinMode(13, OUTPUT);
+
   Serial.println("SETUP: Motors calibrated");
   Serial.println("SETUP: Finished");
 }
@@ -122,7 +133,13 @@ void loop() {
   /* Calculate PID */
   calculatePid();
 
+  
   if(throttle > 1010) {
+    /* Emergency landing if no command has been recieved for more then a second */
+    if(millis() > lastCommand + 1000) {
+      emergencyLanding();
+    }
+
     /* Apply PID to all motors */
     setMotorPids();
   } else {
@@ -130,13 +147,20 @@ void loop() {
     setSpeedForAllMotors(THROTTLE_MINIMUM);
   }
 
-  /* Send calculated and measured data to the remote controller */
-  if(DISPLAY_VERSION == 1) {
-    sendData1(ROLL);
-  } else if(DISPLAY_VERSION == 2) {
-    sendData2();
+  if(sendDataCounter > 3) {
+    /* Send calculated and measured data to the remote controller */
+    if(DISPLAY_VERSION == 1) {
+      sendData1(ROLL);
+    } else if(DISPLAY_VERSION == 2) {
+      sendData2();
+    }
+
+    sendDataCounter = 0;
   }
   
+  sendDataCounter += 1;  
+
+  blinkLED();
 }
 
 
@@ -177,13 +201,28 @@ void calculatePid() {
 * TODO: Write down the orientation 
 */
 void setMotorPids() {
-  motor_1.writeMicroseconds(throttle + pid_current[PITCH] + pid_current[ROLL] );      // Set PID for front right motor
-  motor_2.writeMicroseconds(throttle + pid_current[PITCH] - pid_current[ROLL] );      // Set PID for front left motor
-  motor_3.writeMicroseconds(throttle - pid_current[PITCH] - pid_current[ROLL] );      // Set PID for back left motor
-  motor_4.writeMicroseconds(throttle - pid_current[PITCH] + pid_current[ROLL] );      // Set PID for back right motor
-  
+  if(mode == 1 || mode == 0) {
+    motor_1.writeMicroseconds(throttle + pid_current[PITCH] + pid_current[ROLL] );      // Set PID for front right motor
+    motor_3.writeMicroseconds(throttle - pid_current[PITCH] - pid_current[ROLL] );      // Set PID for back left motor
+  }
+
+  if(mode == 2 || mode == 0) {
+    motor_2.writeMicroseconds(throttle + pid_current[PITCH] - pid_current[ROLL] );      // Set PID for front left motor
+    motor_4.writeMicroseconds(throttle - pid_current[PITCH] + pid_current[ROLL] );      // Set PID for back right motor
+  }
 }
 
+/*
+ * Automatic emergency landing:
+ * Decrease throttle slowly and set desired angle to 0
+ */
+void emergencyLanding() {
+  throttle = throttle - 0.25;
+      
+  angle_desired[0] = 0.0;
+  angle_desired[1] = 0.0;
+  angle_desired[2] = 0.0;
+}
 
 /**
  * Calibrates all 4 motors
@@ -205,14 +244,35 @@ void setSpeedForAllMotors(double speed) {
 }
 
 /**
+ * Let the build-in status LED blink to make sure the main loop is running and not stuck
+ */
+void blinkLED() {
+  if(blink_counter > 20) {
+    blink_status = !blink_status;
+
+    // Toggle LED
+    if(blink_status) {
+      digitalWrite(13, HIGH);
+    }
+    else {
+      digitalWrite(13, LOW);
+    }
+    
+    blink_counter = 0;
+  }
+
+  blink_counter = blink_counter + 1;  
+}
+
+/**
  * Low pass filter the gyro's data using a complementary filter 
  */
 void filterAngle() {
   float angle_new[3];
 
-  angle_new[PITCH] = -(COMPLEMENTARY_ANGLE * (-angle_current[PITCH] + angle_gyro[PITCH] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[PITCH]);    // Positive angle -> forward
-  angle_new[ROLL] = COMPLEMENTARY_ANGLE * (angle_current[ROLL] + angle_gyro[ROLL] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[ROLL];            // Positive angle -> right
-  angle_new[YAW] = COMPLEMENTARY_ANGLE * (angle_current[YAW] + angle_gyro[YAW] * time_elapsed) + (1 - COMPLEMENTARY_ANGLE) * angle_acc[YAW];                // Calculated by chris
+  angle_new[PITCH] = -(COMPLEMENTARY_FILTER * (-angle_current[PITCH] + angle_gyro[PITCH] * time_elapsed) + (1 - COMPLEMENTARY_FILTER) * angle_acc[PITCH]);    // Positive angle -> forward
+  angle_new[ROLL] = COMPLEMENTARY_FILTER * (angle_current[ROLL] + angle_gyro[ROLL] * time_elapsed) + (1 - COMPLEMENTARY_FILTER) * angle_acc[ROLL];            // Positive angle -> right
+  angle_new[YAW] = COMPLEMENTARY_FILTER * (angle_current[YAW] + angle_gyro[YAW] * time_elapsed) + (1 - COMPLEMENTARY_FILTER) * angle_acc[YAW];                // Calculated by chris
 
   float value = 0.5; // some weird stuff is going on here, this is we we use the value variable
 
@@ -331,6 +391,8 @@ void receiveControl() {
       } else if(command[1] == 'y') {
         angle_desired[YAW] = command.substring(2).toFloat();        // Set desired YAW
       }
+
+      lastCommand = millis();
     } else {
       // Receive increase/decrease command
 

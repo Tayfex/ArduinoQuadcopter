@@ -1,0 +1,10 @@
+1. bluetoothctl devices	-	Geräte auflisten
+2. bluetoothctl trust ADDRESS	-	Gerät vertrauen
+3. bluetoothctl pair ADDRESS	-	Gerät paren
+4. bluetoothctl info ADDRESS	-	Gerätestatus anzeigen, es sollte nicht verbunden sein!
+
+5. Weitere Konsole öffnen
+6. sudo rfcomm connect rfcomm1 ADDRESS	-	Verbinde mit Gerät
+
+7. Zu erster Konsole wechseln
+8. bluetoothctl info ADDRESS	-	Gerätestatus anzeigen, es sollte nun verbunden sein!
