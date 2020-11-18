@@ -22,6 +22,7 @@ float displayVersion = 2;               // 1D or 2D display
 float throttle = 1000;                  // Current throttle
 float angle_current_roll = 0;           // Current roll angle
 float angle_current_pitch = 0;          // Current pitch angle
+float angle_current_yaw = 0;            // Current yaw angle
 float angle_desired_roll = 0;           // Desired roll angle
 float angle_desired_pitch = 0;          // Desired pitch angle
 float pid_current_roll = 0;             // Total PID value for roll
@@ -163,16 +164,17 @@ void draw() {
           throttle = float(data[0]);
           angle_current_pitch = float(data[1]);
           angle_current_roll = float(data[2]);
-          angle_desired_pitch = float(data[3]);
-          angle_desired_roll = float(data[4]);
-          pid_current_pitch = float(data[5]);
-          pid_current_roll = float(data[6]);
-          gain_p = float(data[7]);
-          gain_d = float(data[8]);
-          angle_gyro_pitch = float(data[9]);
-          angle_gyro_roll = float(data[10]);
-          angle_acc_pitch = float(data[11]);
-          angle_acc_roll = float(data[12]);
+          angle_current_yaw = float(data[3]);
+          angle_desired_pitch = float(data[4]);
+          angle_desired_roll = float(data[5]);
+          pid_current_pitch = float(data[6]);
+          pid_current_roll = float(data[7]);
+          gain_p = float(data[8]);
+          gain_d = float(data[9]);
+          angle_gyro_pitch = float(data[10]);
+          angle_gyro_roll = float(data[11]);
+          angle_acc_pitch = float(data[12]);
+          angle_acc_roll = float(data[13]);
         }
 
         // Redraw display
@@ -317,6 +319,7 @@ void drawDisplay2() {
 */
 void displayDrone(int posX, int posY) {
   translate(posX, posY);
+  rotate(radians(angle_current_yaw));
   
   displayCircledBar(170, -170, "", 0.8, throttle + pid_current_pitch + pid_current_roll, 1000, 2000);
   displayCircledBar(-170, -170, "", 0.8, throttle + pid_current_pitch - pid_current_roll, 1000, 2000);
@@ -338,6 +341,7 @@ void displayDrone(int posX, int posY) {
   
   displayBalance(0, 0, angle_current_roll, angle_current_pitch, angle_desired_roll, angle_desired_pitch);
   
+  rotate(-radians(angle_current_yaw));
   translate(-posX, -posY);
 }
 

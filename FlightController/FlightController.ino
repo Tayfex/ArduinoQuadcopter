@@ -13,9 +13,9 @@ float COMPLEMENTARY_FILTER = 0.98;                   // Complementary filter for
 double throttle = 1000;                             // Desired throttle
 float angle_desired[3] = {0.0, 0.0, 0.0};           // Desired angle
 
-float gain_p[3] = {1.5, 1.5, 0};                    // Gain proportional
+float gain_p[3] = {1.5, 1.5, 1.5};                    // Gain proportional
 float gain_i[3] = {0, 0, 0};                        // Gain integral
-float gain_d[3] = {0.4, 0.4, 0};                    // Gain derivetive
+float gain_d[3] = {0.4, 0.4, 0.4};                    // Gain derivetive
 
 float filter = 0.9;                                 // Complementary filter for pid
 
@@ -45,7 +45,7 @@ float angle_gyro[3];                                // Angle measured using gyro
 float angle_acc_offset[3] = {0.0,0.0,0.0};          // Offsets for gyro angle measurement
 float angle_gyro_offset[3] = {0.0,0.0,0.0};         // Offsets for acc angle measurement
 
-int16_t angle_acc_raw[3];                           // Accelerator raw data
+float angle_acc_raw[3];                             // Accelerator raw data
 int16_t angle_gyro_raw[3];                          // Gyro raw data
 
 float time_current;                                 // Current time
@@ -171,27 +171,33 @@ void calculatePid() {
   /* Save previous errors */
   error_prev[PITCH] = error_current[PITCH];
   error_prev[ROLL] = error_current[ROLL];
+  error_prev[YAW] = error_current[YAW];
 
   /* Calculate current error */
   error_current[PITCH] = angle_current[PITCH] - angle_desired[PITCH];
   error_current[ROLL] = angle_current[ROLL] - angle_desired[ROLL];
+  error_current[YAW] = angle_current[YAW] - angle_desired[YAW];
 
   /* Calculate weighted proportional error */
   pid_p[PITCH] = gain_p[PITCH] * error_current[PITCH];
   pid_p[ROLL] = gain_p[ROLL] * error_current[ROLL];
+  pid_p[YAW] = gain_p[YAW] * error_current[YAW];
 
   /* Calculated weighted derivitive error */
   float pid_d_new[3];
 
   pid_d_new[PITCH] = gain_d[PITCH] * (error_current[PITCH] - error_prev[PITCH]) / time_elapsed;
   pid_d_new[ROLL] = gain_d[ROLL] * (error_current[ROLL] - error_prev[ROLL]) / time_elapsed;
+  pid_d_new[YAW] = gain_d[YAW] * (error_current[YAW] - error_prev[YAW]) / time_elapsed;
 
   pid_d[PITCH] = filter * pid_d[PITCH] + (1 - filter) * pid_d_new[PITCH];
   pid_d[ROLL] = filter * pid_d[ROLL] + (1 - filter) * pid_d_new[ROLL];
+  pid_d[YAW] = filter * pid_d[YAW] + (1 - filter) * pid_d_new[YAW];
 
   /* Calculate weighted sum of the PID */
   pid_current[PITCH] = pid_p[PITCH] + pid_i[PITCH] + pid_d[PITCH];
   pid_current[ROLL] = pid_p[ROLL] + pid_i[ROLL] + pid_d[ROLL];
+  pid_current[YAW] = pid_p[YAW] + pid_i[YAW] + pid_d[YAW];
 }
 
 
@@ -202,13 +208,13 @@ void calculatePid() {
 */
 void setMotorPids() {
   if(mode == 1 || mode == 0) {
-    motor_1.writeMicroseconds(throttle + pid_current[PITCH] + pid_current[ROLL] );      // Set PID for front right motor
-    motor_3.writeMicroseconds(throttle - pid_current[PITCH] - pid_current[ROLL] );      // Set PID for back left motor
+    motor_1.writeMicroseconds(throttle + pid_current[PITCH] + pid_current[ROLL] + pid_current[YAW]);      // Set PID for front right motor
+    motor_3.writeMicroseconds(throttle - pid_current[PITCH] - pid_current[ROLL] + pid_current[YAW]);      // Set PID for back left motor
   }
 
   if(mode == 2 || mode == 0) {
-    motor_2.writeMicroseconds(throttle + pid_current[PITCH] - pid_current[ROLL] );      // Set PID for front left motor
-    motor_4.writeMicroseconds(throttle - pid_current[PITCH] + pid_current[ROLL] );      // Set PID for back right motor
+    motor_2.writeMicroseconds(throttle + pid_current[PITCH] - pid_current[ROLL] - pid_current[YAW]);      // Set PID for front left motor
+    motor_4.writeMicroseconds(throttle - pid_current[PITCH] + pid_current[ROLL] - pid_current[YAW]);      // Set PID for back right motor
   }
 }
 
@@ -320,14 +326,15 @@ void readAccelerometer() {
   Wire.requestFrom(MPU_ADDRESS, 6, true);
 
   /* Save received answer */
-  angle_acc_raw[PITCH] = Wire.read()<<8|Wire.read();
-  angle_acc_raw[ROLL] = Wire.read()<<8|Wire.read();
-  angle_acc_raw[YAW] = Wire.read()<<8|Wire.read();
+  angle_acc_raw[PITCH] = (Wire.read()<<8|Wire.read()) / 16384.0;
+  angle_acc_raw[ROLL] = (Wire.read()<<8|Wire.read()) / 16384.0;
+  angle_acc_raw[YAW] = (Wire.read()<<8|Wire.read()) / 16384.0;
 
   /* Convert the data to g */
-  angle_acc[PITCH] = atan((angle_acc_raw[ROLL] / 16384.0) / sqrt(pow((angle_acc_raw[PITCH] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
-  angle_acc[ROLL] = atan(-1 * (angle_acc_raw[PITCH] / 16384.0) / sqrt(pow((angle_acc_raw[ROLL] / 16384.0), 2) + pow((angle_acc_raw[YAW] / 16384.0), 2))) * rad_to_deg;
-  angle_acc[YAW] = angle_acc_raw[YAW] / 16384.0;                   // Calculated by my own, don't know if its correct...
+  angle_acc[PITCH] = atan(angle_acc_raw[ROLL] / sqrt(pow(angle_acc_raw[PITCH], 2) + pow(angle_acc_raw[YAW], 2))) * rad_to_deg;
+  angle_acc[ROLL] = atan(-1 * angle_acc_raw[PITCH] / sqrt(pow(angle_acc_raw[ROLL], 2) + pow(angle_acc_raw[YAW], 2))) * rad_to_deg;
+  angle_acc[YAW] = atan(angle_acc_raw[PITCH] / angle_acc_raw[ROLL]);
+  //angle_acc[YAW] = angle_acc_raw[YAW] / 16384.0;                   // Calculated by my own, don't know if its correct...
 
   /* Subtract Acc angle offsets, this is done here, since the total angle is calculated by integration and offsets there interfere with integration */
   angle_acc[PITCH] = angle_acc[PITCH] - angle_acc_offset[PITCH];
@@ -472,6 +479,7 @@ void sendData2() {
     String(throttle) + "|" + 
     String(angle_current[PITCH]) + "|" + 
     String(angle_current[ROLL]) + "|" + 
+    String(angle_current[YAW]) + "|" + 
     String(angle_desired[PITCH]) + "|" +
     String(angle_desired[ROLL]) + "|" +
     String(pid_current[PITCH]) + "|" + 
