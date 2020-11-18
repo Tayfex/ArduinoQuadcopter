@@ -84,10 +84,10 @@ void setup() {
 
   Serial.println("SETUP: Communication with gyro started");
 
-  /* Set gyro's digital low pass filter to ~43Hz */
+  /* Set gyro's digital low pass filter to ~5Hz */
   Wire.beginTransmission(MPU_ADDRESS);
   Wire.write(0x1A);
-  Wire.write(0x03);
+  Wire.write(0x06);
   Wire.endTransmission();
 
   Serial.println("SETUP: Gyro's low pass filter set");

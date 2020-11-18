@@ -13,7 +13,7 @@ int WINDOW_SIZE_Y = 500;                // Window height
 int RECT_BAR_SIZE_X = 100;              // Rect bar width
 int RECT_BAR_SIZE_Y = 300;              // Rect bar height
 
-int PORT_NUMBER = 3;                    // Index of the serial port
+int PORT_NUMBER = 2;                    // Index of the serial port
 int GRAPH_ZOOM = 3;                     // Zoom of the graph
 
 // --- VARIABLES ---
@@ -125,15 +125,6 @@ void draw() {
 
     // ----- Drone in FLY MODE -----
     if (dataString != "") {
-
-      // Send gamepad data every third frame to reduce the amount of data send or the bluetooth module might crash
-      //if(sendInput > 3) {
-      //  //sendGamepadInput();
-      //  sendInput = 0;
-      //}
-      //sendGamepadInput();
-      
-      //sendInput += 1;
       
       println(dataString);
 
@@ -207,7 +198,6 @@ void draw() {
     }
     
     sendInput += 1;
-  //sendGamepadInput();
 }
 
 void log(String message) {
